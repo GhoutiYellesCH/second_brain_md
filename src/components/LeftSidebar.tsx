@@ -33,7 +33,8 @@ interface LeftSidebarProps {
   onSearchSelect: (result: SearchResult) => void;
   onTagSelect: (tag: string) => void;
   onOpenSettings: () => void;
-  onOpenGlobalGraph: () => void;
+  onOpenSynapseGraph: () => void;
+  onPickVaultFolder: () => void;
   searchResults: SearchResult[];
   onSearchQueryChange: (query: string) => void;
   searchQuery: string;
@@ -54,7 +55,8 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   onSearchSelect,
   onTagSelect,
   onOpenSettings,
-  onOpenGlobalGraph,
+  onOpenSynapseGraph,
+  onPickVaultFolder,
   searchResults,
   onSearchQueryChange,
   searchQuery,
@@ -120,7 +122,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                 <ChevronRight className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
               )}
               {getFileIcon(item)}
-              <span className="truncate">{item.name || 'Vault'}</span>
+              <span dir="auto" className="truncate">{item.name || 'Vault'}</span>
             </div>
 
             <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1 transition-opacity">
@@ -169,7 +171,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
       >
         <div className="flex items-center gap-1.5 truncate">
           {getFileIcon(item)}
-          <span className="truncate">{item.name.replace(/\.md$/, '')}</span>
+          <span dir="auto" className="truncate">{item.name.replace(/\.md$/, '')}</span>
         </div>
 
         <div className="opacity-0 group-hover:opacity-100 flex items-center gap-0.5 transition-opacity">
@@ -261,9 +263,16 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
 
         <div className="flex items-center gap-1">
           <button
-            onClick={onOpenGlobalGraph}
+            onClick={onPickVaultFolder}
+            className="p-1.5 rounded text-blue-400 hover:text-blue-300 hover:bg-zinc-800 transition-colors"
+            title="Open Any Folder as Vault"
+          >
+            <FolderOpen className="w-3.5 h-3.5" />
+          </button>
+          <button
+            onClick={onOpenSynapseGraph}
             className="p-1.5 rounded text-purple-400 hover:text-purple-300 hover:bg-zinc-800 transition-colors"
-            title="Open Synapses Graph"
+            title="Open Synapse Graph in External Window"
           >
             <Sparkles className="w-3.5 h-3.5" />
           </button>
@@ -320,10 +329,10 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                   className="p-2 bg-zinc-900/60 hover:bg-zinc-800/80 rounded-lg cursor-pointer transition-colors group"
                 >
                   <div className="flex items-center justify-between text-xs font-semibold text-zinc-200 group-hover:text-purple-300">
-                    <span className="truncate">{res.title}</span>
+                    <span dir="auto" className="truncate">{res.title}</span>
                     <span className="text-[10px] text-zinc-500 font-mono">L{res.line_number}</span>
                   </div>
-                  <p className="text-[11px] text-zinc-400 truncate mt-0.5 font-mono">{res.snippet}</p>
+                  <p dir="auto" className="text-[11px] text-zinc-400 truncate mt-0.5 font-mono">{res.snippet}</p>
                 </div>
               ))}
             </div>

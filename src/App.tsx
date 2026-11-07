@@ -4,8 +4,6 @@ import {
   VaultSettings,
   VaultStats,
   EditorTab,
-  GraphNode,
-  GraphLink,
   ViewMode,
   HeadingItem,
   NoteBacklinks,
@@ -16,7 +14,6 @@ import { extractWikilinks, extractTags } from './services/markdownParser';
 import { LeftSidebar } from './components/LeftSidebar';
 import { RightSidebar } from './components/RightSidebar';
 import { ObsidianEditor } from './components/ObsidianEditor';
-import { SynapsesGraph } from './components/SynapsesGraph';
 import { AssetViewer } from './components/AssetViewer';
 import { BrowserView } from './components/BrowserView';
 import { SettingsModal } from './components/SettingsModal';
@@ -33,13 +30,15 @@ import {
   FileText,
   Image as ImageIcon,
   FolderOpen,
+  Languages,
 } from 'lucide-react';
 
 const DEFAULT_SETTINGS: VaultSettings = {
   vaultPath: '',
   assetsMode: 'designated',
   designatedFolder: 'Attachments',
-  defaultViewMode: 'graph',
+  defaultViewMode: 'reading',
+  rtlMode: 'auto',
   theme: 'dark',
   fontSize: 16,
 };
@@ -99,7 +98,7 @@ export const App: React.FC = () => {
       const stats = await vaultApi.getVaultStats(vPath);
       setVaultStats(stats);
 
-      // Pre-read markdown notes for graph connections
+      // Pre-read markdown notes for backlinks & metadata
       const notesMap: Record<string, string> = {};
       const traverse = async (item: FileItem) => {
         if (item.is_dir && item.children) {
@@ -122,25 +121,43 @@ export const App: React.FC = () => {
     }
   }, [settings.vaultPath]);
 
+  // Pick any folder as vault using native dialog
+  const handlePickVaultFolder = async () => {
+    try {
+      const picked = await vaultApi.pickVaultFolder();
+      if (picked) {
+        setSettings((prev) => ({ ...prev, vaultPath: picked }));
+        await refreshVault(picked);
+      }
+    } catch (err) {
+      console.error('Failed to pick vault folder:', err);
+    }
+  };
+
+  // Launch Synapse Graph in external window
+  const handleOpenSynapseGraph = async () => {
+    try {
+      await vaultApi.openInSynapseGraph(settings.vaultPath);
+    } catch (err) {
+      console.error('Failed to open synapse-graph:', err);
+    }
+  };
+
   // Initial load effect
   useEffect(() => {
     (async () => {
-      const result = await refreshVault();
+      // 1. Check CLI arguments (e.g. `second-brain /path/to/folder` or `-v /path/to/folder`)
+      const cliArgs = await vaultApi.getCliVaultArgs();
+      const targetVault = cliArgs.vault_path || undefined;
+
+      const result = await refreshVault(targetVault);
       if (!result) return;
 
-      // Check default startup tab
-      if (settings.defaultViewMode === 'graph') {
-        const graphTab: EditorTab = {
-          id: 'graph://synapses',
-          path: 'graph://synapses',
-          title: '⚡ Synapses Graph',
-          viewMode: 'graph',
-          isPinned: true,
-        };
-        setTabs([graphTab]);
-        setActiveTabId(graphTab.id);
+      // 2. If initial note passed from CLI, open it
+      if (cliArgs.initial_file) {
+        openNote(cliArgs.initial_file);
       } else {
-        // Open welcome note or first note
+        // Open first note or welcome note
         const firstNote = Object.keys(result.notesMap)[0];
         if (firstNote) {
           openNote(firstNote);
@@ -242,23 +259,6 @@ export const App: React.FC = () => {
     [tabs]
   );
 
-  // Open Synapses Graph tab
-  const openGlobalGraphTab = useCallback(() => {
-    const existing = tabs.find((t) => t.id === 'graph://synapses');
-    if (existing) {
-      setActiveTabId(existing.id);
-      return;
-    }
-    const graphTab: EditorTab = {
-      id: 'graph://synapses',
-      path: 'graph://synapses',
-      title: '⚡ Synapses Graph',
-      viewMode: 'graph',
-    };
-    setTabs((prev) => [...prev, graphTab]);
-    setActiveTabId(graphTab.id);
-  }, [tabs]);
-
   // Open Browser View tab
   const openBrowserTab = useCallback(
     (url?: string) => {
@@ -288,7 +288,7 @@ export const App: React.FC = () => {
     if (activeTabId === tabId && remaining.length > 0) {
       const nextActive = remaining[Math.max(0, idx - 1)];
       setActiveTabId(nextActive.id);
-      if (nextActive.viewMode !== 'graph' && nextActive.viewMode !== 'browser') {
+      if (nextActive.viewMode !== 'browser' && nextActive.viewMode !== 'asset') {
         const c = allNotesContent[nextActive.path];
         if (c !== undefined) setActiveFileContent(c);
       }
@@ -407,72 +407,20 @@ export const App: React.FC = () => {
     return () => clearTimeout(timer);
   }, [searchQuery, settings.vaultPath]);
 
-  // Construct Graph Nodes and Links from Vault Notes
-  const { graphNodes, graphLinks, allTagsList } = useMemo(() => {
-    const nodes: GraphNode[] = [];
-    const links: GraphLink[] = [];
-    const nodeMap = new Map<string, GraphNode>();
+  // Extract all tags from notes
+  const allTagsList = useMemo(() => {
     const tagCountMap = new Map<string, number>();
-
-    // 1. Create nodes for all notes
-    flatNoteList.forEach((file, index) => {
+    flatNoteList.forEach((file) => {
       const content = allNotesContent[file.path] || '';
       const tags = extractTags(content);
       tags.forEach((t) => tagCountMap.set(t, (tagCountMap.get(t) || 0) + 1));
-
-      // Color scheme based on directory or first tag
-      const colors = ['#a855f7', '#06b6d4', '#10b981', '#f59e0b', '#ec4899', '#3b82f6'];
-      const color = colors[index % colors.length];
-
-      const node: GraphNode = {
-        id: file.title,
-        title: file.title,
-        path: file.path,
-        tags,
-        connections: 0,
-        x: (Math.random() - 0.5) * 400,
-        y: (Math.random() - 0.5) * 400,
-        vx: 0,
-        vy: 0,
-        radius: 6,
-        color,
-        isOrphan: true,
-      };
-
-      nodes.push(node);
-      nodeMap.set(file.title, node);
-      nodeMap.set(file.path, node);
     });
-
-    // 2. Create synapses links from wikilinks [[...]]
-    flatNoteList.forEach((file) => {
-      const content = allNotesContent[file.path] || '';
-      const wikilinks = extractWikilinks(content);
-
-      wikilinks.forEach((targetTitle) => {
-        const sourceNode = nodeMap.get(file.title);
-        const targetNode = nodeMap.get(targetTitle);
-
-        if (sourceNode && targetNode && sourceNode.id !== targetNode.id) {
-          links.push({
-            source: sourceNode.id,
-            target: targetNode.id,
-          });
-          sourceNode.connections += 1;
-          targetNode.connections += 1;
-          sourceNode.isOrphan = false;
-          targetNode.isOrphan = false;
-        }
-      });
-    });
-
     const tagsArray = Array.from(tagCountMap.entries()).map(([tag, count]) => ({
       tag,
       count,
     }));
     tagsArray.sort((a, b) => b.count - a.count);
-
-    return { graphNodes: nodes, graphLinks: links, allTagsList: tagsArray };
+    return tagsArray;
   }, [flatNoteList, allNotesContent]);
 
   // Backlinks for active note
@@ -519,10 +467,10 @@ export const App: React.FC = () => {
         e.preventDefault();
         setShowQuickSwitcher(true);
       }
-      // Ctrl+G: Synapses Graph
+      // Ctrl+G: Launch Synapse Graph externally
       if ((e.ctrlKey || e.metaKey) && e.key === 'g') {
         e.preventDefault();
-        openGlobalGraphTab();
+        handleOpenSynapseGraph();
       }
       // Ctrl+B: Toggle Sidebar
       if ((e.ctrlKey || e.metaKey) && e.key === 'b') {
@@ -537,7 +485,7 @@ export const App: React.FC = () => {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [activeTabId, openGlobalGraphTab]);
+  }, [activeTabId, handleOpenSynapseGraph]);
 
   // Word count & reading stats
   const stats = useMemo(() => {
@@ -572,6 +520,16 @@ export const App: React.FC = () => {
 
           <div className="w-[1px] h-4 bg-zinc-800 mx-1" />
 
+          {/* Open Folder as Vault */}
+          <button
+            onClick={handlePickVaultFolder}
+            className="flex items-center gap-1.5 px-2.5 py-1 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-md text-zinc-300 font-medium transition-colors"
+            title="Open Any Folder as Markdown Vault"
+          >
+            <FolderOpen className="w-3 h-3 text-blue-400" />
+            <span>Open Vault</span>
+          </button>
+
           {/* Quick Switcher Trigger */}
           <button
             onClick={() => setShowQuickSwitcher(true)}
@@ -584,14 +542,14 @@ export const App: React.FC = () => {
             </kbd>
           </button>
 
-          {/* 1-Click Synapses Graph Button */}
+          {/* 1-Click External Synapse Graph Button */}
           <button
-            onClick={openGlobalGraphTab}
+            onClick={handleOpenSynapseGraph}
             className="flex items-center gap-1.5 px-2.5 py-1 bg-purple-950/40 hover:bg-purple-900/50 border border-purple-800/40 rounded-md text-purple-300 font-medium transition-colors"
-            title="Open Synapses Graph (Ctrl+G)"
+            title="Launch Synapse Graph Visualizer (Ctrl+G)"
           >
             <Sparkles className="w-3 h-3 text-purple-400" />
-            <span>Synapses Graph</span>
+            <span>Synapse Graph</span>
           </button>
 
           {/* 1-Click Browser View Button */}
@@ -644,7 +602,7 @@ export const App: React.FC = () => {
               key={tab.id}
               onClick={() => {
                 setActiveTabId(tab.id);
-                if (tab.viewMode !== 'graph' && tab.viewMode !== 'browser') {
+                if (tab.viewMode !== 'browser' && tab.viewMode !== 'asset') {
                   const c = allNotesContent[tab.path];
                   if (c !== undefined) setActiveFileContent(c);
                 }
@@ -655,9 +613,7 @@ export const App: React.FC = () => {
                   : 'bg-transparent border-transparent text-zinc-400 hover:bg-zinc-850 hover:text-zinc-200'
               }`}
             >
-              {tab.viewMode === 'graph' ? (
-                <Sparkles className="w-3 h-3 text-purple-400 shrink-0" />
-              ) : tab.viewMode === 'browser' ? (
+              {tab.viewMode === 'browser' ? (
                 <Globe className="w-3 h-3 text-blue-400 shrink-0" />
               ) : tab.viewMode === 'asset' ? (
                 <ImageIcon className="w-3 h-3 text-amber-400 shrink-0" />
@@ -705,12 +661,12 @@ export const App: React.FC = () => {
             onSearchSelect={(result) => {
               openNote(result.path);
             }}
-            onTagSelect={(_tag) => {
-              // Open global graph filtered by tag or search
-              openGlobalGraphTab();
+            onTagSelect={(tag) => {
+              setSearchQuery(`#${tag}`);
             }}
             onOpenSettings={() => setShowSettingsModal(true)}
-            onOpenGlobalGraph={openGlobalGraphTab}
+            onOpenSynapseGraph={handleOpenSynapseGraph}
+            onPickVaultFolder={handlePickVaultFolder}
             searchResults={searchResults}
             onSearchQueryChange={setSearchQuery}
             searchQuery={searchQuery}
@@ -725,18 +681,6 @@ export const App: React.FC = () => {
         <main className="flex-1 flex flex-col h-full overflow-hidden bg-[#18181b] relative">
           {activeTab ? (
             <>
-              {/* Tab Mode: Full Synapses Graph */}
-              {activeTab.viewMode === 'graph' && (
-                <SynapsesGraph
-                  nodes={graphNodes}
-                  links={graphLinks}
-                  activeNotePath={tabs.find((t) => t.path.endsWith('.md'))?.path}
-                  onNodeClick={(node) => {
-                    openNote(node.path);
-                  }}
-                />
-              )}
-
               {/* Tab Mode: Browser View */}
               {activeTab.viewMode === 'browser' && (
                 <BrowserView initialUrl={activeTab.browserUrl} />
@@ -759,8 +703,7 @@ export const App: React.FC = () => {
               )}
 
               {/* Tab Mode: Markdown Editor Modes (Live, Reading, Source, Split) */}
-              {activeTab.viewMode !== 'graph' &&
-                activeTab.viewMode !== 'browser' &&
+              {activeTab.viewMode !== 'browser' &&
                 activeTab.viewMode !== 'asset' && (
                   <ObsidianEditor
                     content={activeFileContent}
@@ -783,17 +726,25 @@ export const App: React.FC = () => {
             <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-zinc-500">
               <Sparkles className="w-12 h-12 text-purple-500/40 mb-3 animate-pulse" />
               <h2 className="text-zinc-300 font-semibold text-base mb-1">
-                No note or synapses tab open
+                No note open in Second Brain
               </h2>
               <p className="text-xs text-zinc-500 max-w-sm mb-6">
-                Open a note from the File Explorer, create a new thought, or open the Synapses Graph!
+                Open a note from the File Explorer, create a new thought, or explore connections in Synapse Graph!
               </p>
               <div className="flex gap-3">
                 <button
-                  onClick={openGlobalGraphTab}
-                  className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-lg text-xs font-semibold shadow"
+                  onClick={handleOpenSynapseGraph}
+                  className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-lg text-xs font-semibold shadow flex items-center gap-1.5"
                 >
-                  ⚡ Open Synapses Graph
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>Launch Synapse Graph</span>
+                </button>
+                <button
+                  onClick={handlePickVaultFolder}
+                  className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-lg text-xs font-semibold flex items-center gap-1.5"
+                >
+                  <FolderOpen className="w-3.5 h-3.5 text-blue-400" />
+                  <span>Open Any Folder...</span>
                 </button>
                 <button
                   onClick={() => handleCreateFile(settings.vaultPath)}
@@ -806,17 +757,15 @@ export const App: React.FC = () => {
           )}
         </main>
 
-        {/* Right Sidebar (Local Synapses, Backlinks, Outline) */}
+        {/* Right Sidebar (Backlinks, Outline, Synapse launcher) */}
         {showRightSidebar && (
           <RightSidebar
             activeNoteTitle={activeTab?.title || ''}
             activeNotePath={activeTab?.path || ''}
-            nodes={graphNodes}
-            links={graphLinks}
             backlinks={activeNoteBacklinks}
             headings={currentHeadings}
-            onNodeClick={(node) => openNote(node.path)}
             onNavigateToNote={handleNavigateWikilink}
+            onOpenSynapseGraph={handleOpenSynapseGraph}
             onClose={() => setShowRightSidebar(false)}
           />
         )}
@@ -825,12 +774,16 @@ export const App: React.FC = () => {
       {/* Bottom Status Bar */}
       <footer className="h-6 bg-[#101012] border-t border-zinc-800/80 px-3 flex items-center justify-between text-[11px] text-zinc-500 shrink-0 font-mono select-none">
         <div className="flex items-center gap-3">
-          <span className="flex items-center gap-1.5 text-zinc-400">
+          <button
+            onClick={handlePickVaultFolder}
+            className="flex items-center gap-1.5 text-zinc-400 hover:text-zinc-200 transition-colors"
+            title="Click to open another folder as vault"
+          >
             <FolderOpen className="w-3 h-3 text-purple-400" />
             <span className="truncate max-w-[200px]" title={settings.vaultPath}>
               {settings.vaultPath.split('/').pop() || 'Vault'}
             </span>
-          </span>
+          </button>
 
           <span className="text-zinc-700">•</span>
 
@@ -845,10 +798,14 @@ export const App: React.FC = () => {
 
           <span className="text-zinc-700">•</span>
 
-          <span>
-            Synapses Graph: <strong className="text-zinc-300">{graphNodes.length}</strong> nodes,{' '}
-            <strong className="text-zinc-300">{graphLinks.length}</strong> links
-          </span>
+          <button
+            onClick={handleOpenSynapseGraph}
+            className="flex items-center gap-1 text-purple-400 hover:text-purple-300 font-medium transition-colors"
+            title="Open Synapse Graph in external window"
+          >
+            <Sparkles className="w-3 h-3" />
+            <span>Launch Synapse Graph</span>
+          </button>
         </div>
 
         <div className="flex items-center gap-3">
@@ -860,6 +817,10 @@ export const App: React.FC = () => {
               <span className="text-zinc-700">•</span>
             </>
           )}
+          <span className="text-emerald-400 font-semibold text-[10px] flex items-center gap-1">
+            <Languages className="w-3 h-3" />
+            <span>ARABIC RTL READY</span>
+          </span>
           <span className="text-purple-400 uppercase font-semibold text-[10px]">
             {activeTab?.viewMode || 'READY'}
           </span>

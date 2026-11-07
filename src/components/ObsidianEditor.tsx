@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { ViewMode, VaultSettings, HeadingItem } from '../types';
-import { parseMarkdown, resolveAssetPath } from '../services/markdownParser';
+import { parseMarkdown, resolveAssetPath, isArabicOrRtlText } from '../services/markdownParser';
 import { vaultApi } from '../services/vaultApi';
 import {
   Bold,
@@ -21,6 +21,7 @@ import {
   Columns,
   Sparkles,
   Paperclip,
+  Languages,
 } from 'lucide-react';
 
 interface ObsidianEditorProps {
@@ -50,6 +51,16 @@ export const ObsidianEditor: React.FC<ObsidianEditorProps> = ({
   const previewRef = useRef<HTMLDivElement | null>(null);
   const [assetUrls, setAssetUrls] = useState<Record<string, string>>({});
   const [isDragOver, setIsDragOver] = useState<boolean>(false);
+
+  // Arabic / RTL Writing Direction State
+  const [editorRtl, setEditorRtl] = useState<'auto' | 'rtl' | 'ltr'>(settings.rtlMode || 'auto');
+
+  // Detect whether content is predominantly RTL / Arabic
+  const isContentRtl = useMemo(() => {
+    if (editorRtl === 'rtl') return true;
+    if (editorRtl === 'ltr') return false;
+    return isArabicOrRtlText(content);
+  }, [content, editorRtl]);
 
   // Parse markdown content
   const parsed = useMemo(() => {
@@ -386,8 +397,29 @@ export const ObsidianEditor: React.FC<ObsidianEditorProps> = ({
           </button>
         </div>
 
-        {/* View Mode Switcher Pill */}
-        <div className="flex items-center bg-zinc-900 border border-zinc-800 rounded-lg p-0.5 shadow-inner">
+        {/* Right Section: RTL Toggle & View Mode Switcher */}
+        <div className="flex items-center gap-2">
+          {/* RTL / Arabic Direction Toggle */}
+          <button
+            onClick={() => {
+              const nextMode = editorRtl === 'auto' ? 'rtl' : editorRtl === 'rtl' ? 'ltr' : 'auto';
+              setEditorRtl(nextMode);
+            }}
+            className={`flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs font-medium border transition-colors ${
+              isContentRtl
+                ? 'bg-purple-950/60 text-purple-300 border-purple-700/60'
+                : 'bg-zinc-900/60 text-zinc-400 border-zinc-800 hover:text-zinc-200'
+            }`}
+            title={`Text Direction: ${editorRtl.toUpperCase()} (Click to toggle Auto / RTL Arabic / LTR)`}
+          >
+            <Languages className="w-3.5 h-3.5" />
+            <span className="font-mono text-[11px]">
+              {editorRtl === 'rtl' ? 'RTL (ع)' : editorRtl === 'ltr' ? 'LTR' : isContentRtl ? 'AUTO (ع)' : 'AUTO'}
+            </span>
+          </button>
+
+          {/* View Mode Switcher Pill */}
+          <div className="flex items-center bg-zinc-900 border border-zinc-800 rounded-lg p-0.5 shadow-inner">
           <button
             onClick={() => onViewModeChange('live')}
             className={`flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors ${
@@ -438,18 +470,22 @@ export const ObsidianEditor: React.FC<ObsidianEditorProps> = ({
           </button>
         </div>
       </div>
+    </div>
 
       {/* Editor Content Area based on mode */}
-      <div className="flex-1 flex overflow-hidden relative">
+      <div className={`flex-1 flex overflow-hidden relative ${isContentRtl ? 'is-rtl' : ''}`}>
         {/* Mode: Source Only */}
         {viewMode === 'source' && (
           <textarea
             ref={textareaRef}
+            dir={isContentRtl ? 'rtl' : 'auto'}
             value={content}
             onChange={(e) => onChange(e.target.value)}
             onPaste={handlePaste}
             placeholder="Write your markdown note here..."
-            className="w-full h-full bg-[#161619] text-zinc-100 font-mono p-6 resize-none outline-none leading-relaxed text-sm selection:bg-purple-900/60"
+            className={`w-full h-full bg-[#161619] text-zinc-100 font-mono p-6 resize-none outline-none leading-relaxed text-sm selection:bg-purple-900/60 ${
+              isContentRtl ? 'text-right' : ''
+            }`}
             style={{ fontSize: `${settings.fontSize}px` }}
           />
         )}
@@ -458,9 +494,12 @@ export const ObsidianEditor: React.FC<ObsidianEditorProps> = ({
         {viewMode === 'reading' && (
           <div
             ref={previewRef}
+            dir={isContentRtl ? 'rtl' : 'auto'}
             onClick={handlePreviewClick}
             dangerouslySetInnerHTML={{ __html: parsed.html }}
-            className="w-full h-full overflow-y-auto px-10 py-8 prose prose-invert max-w-4xl mx-auto text-zinc-200 selection:bg-purple-900/60 leading-relaxed font-sans"
+            className={`w-full h-full overflow-y-auto px-10 py-8 prose prose-invert max-w-4xl mx-auto text-zinc-200 selection:bg-purple-900/60 leading-relaxed font-sans ${
+              isContentRtl ? 'text-right' : ''
+            }`}
             style={{ fontSize: `${settings.fontSize}px` }}
           />
         )}
@@ -471,19 +510,25 @@ export const ObsidianEditor: React.FC<ObsidianEditorProps> = ({
             <div className="w-1/2 h-full flex flex-col">
               <textarea
                 ref={textareaRef}
+                dir={isContentRtl ? 'rtl' : 'auto'}
                 value={content}
                 onChange={(e) => onChange(e.target.value)}
                 onPaste={handlePaste}
                 placeholder="Write your note in markdown..."
-                className="w-full h-full bg-[#161619] text-zinc-100 font-mono p-5 resize-none outline-none leading-relaxed text-sm selection:bg-purple-900/60"
+                className={`w-full h-full bg-[#161619] text-zinc-100 font-mono p-5 resize-none outline-none leading-relaxed text-sm selection:bg-purple-900/60 ${
+                  isContentRtl ? 'text-right' : ''
+                }`}
                 style={{ fontSize: `${settings.fontSize}px` }}
               />
             </div>
             <div
               ref={previewRef}
+              dir={isContentRtl ? 'rtl' : 'auto'}
               onClick={handlePreviewClick}
               dangerouslySetInnerHTML={{ __html: parsed.html }}
-              className="w-1/2 h-full overflow-y-auto p-6 prose prose-invert text-zinc-200 selection:bg-purple-900/60 leading-relaxed font-sans"
+              className={`w-1/2 h-full overflow-y-auto p-6 prose prose-invert text-zinc-200 selection:bg-purple-900/60 leading-relaxed font-sans ${
+                isContentRtl ? 'text-right' : ''
+              }`}
               style={{ fontSize: `${settings.fontSize}px` }}
             />
           </div>
@@ -495,11 +540,14 @@ export const ObsidianEditor: React.FC<ObsidianEditorProps> = ({
             <div className="max-w-4xl w-full mx-auto p-8 flex flex-col flex-1">
               <textarea
                 ref={textareaRef}
+                dir={isContentRtl ? 'rtl' : 'auto'}
                 value={content}
                 onChange={(e) => onChange(e.target.value)}
                 onPaste={handlePaste}
                 placeholder="Start typing your thoughts with [[wikilinks]], #tags, and assets..."
-                className="w-full min-h-[300px] bg-transparent text-zinc-100 font-mono resize-none outline-none leading-relaxed text-sm border-b border-zinc-800/80 pb-6 focus:border-purple-500/80 transition-colors"
+                className={`w-full min-h-[300px] bg-transparent text-zinc-100 font-mono resize-none outline-none leading-relaxed text-sm border-b border-zinc-800/80 pb-6 focus:border-purple-500/80 transition-colors ${
+                  isContentRtl ? 'text-right' : ''
+                }`}
                 style={{ fontSize: `${settings.fontSize}px` }}
               />
 
@@ -507,12 +555,15 @@ export const ObsidianEditor: React.FC<ObsidianEditorProps> = ({
               <div className="mt-6 pt-2">
                 <div className="flex items-center gap-2 text-xs text-purple-400 font-medium mb-4 select-none">
                   <Sparkles className="w-3.5 h-3.5" />
-                  <span>Live Rendered Components & Synapses</span>
+                  <span>Live Rendered Components</span>
                 </div>
                 <div
+                  dir={isContentRtl ? 'rtl' : 'auto'}
                   onClick={handlePreviewClick}
                   dangerouslySetInnerHTML={{ __html: parsed.html }}
-                  className="prose prose-invert max-w-none text-zinc-200 selection:bg-purple-900/60 leading-relaxed font-sans"
+                  className={`prose prose-invert max-w-none text-zinc-200 selection:bg-purple-900/60 leading-relaxed font-sans ${
+                    isContentRtl ? 'text-right' : ''
+                  }`}
                 />
               </div>
             </div>

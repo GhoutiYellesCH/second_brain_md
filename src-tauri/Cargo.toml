@@ -1,6 +1,6 @@
 [package]
 name = "second-brain"
-version = "1.0.0"
+version = "1.0.1"
 description = "Second Brain - Obsidian-Compatible Vault & Synapses Graph"
 authors = ["Ghouti Yelles Chaouche"]
 edition = "2024"
@@ -28,8 +28,8 @@ base64 = "0.22"
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
 [profile.release]
-codegen-units = 1
-lto = true
-opt-level = 3
+codegen-units = 16
+lto = false
+opt-level = 2
 panic = "abort"
 strip = true

@@ -326,4 +326,26 @@ export const vaultApi = {
       await invoke('init_sample_vault', { vaultPath });
     }
   },
+
+  async getCliVaultArgs(): Promise<{ vault_path: string | null; initial_file: string | null }> {
+    if (isTauri()) {
+      return await invoke<{ vault_path: string | null; initial_file: string | null }>('get_cli_vault_args');
+    }
+    return { vault_path: null, initial_file: null };
+  },
+
+  async pickVaultFolder(): Promise<string | null> {
+    if (isTauri()) {
+      return await invoke<string | null>('pick_vault_folder');
+    }
+    return null;
+  },
+
+  async openInSynapseGraph(vaultPath: string): Promise<void> {
+    if (isTauri()) {
+      await invoke('open_in_synapse_graph', { vaultPath });
+    } else {
+      console.log('Open in Synapse Graph:', vaultPath);
+    }
+  },
 };

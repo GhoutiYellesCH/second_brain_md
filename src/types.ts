@@ -1,6 +1,8 @@
-export type ViewMode = 'live' | 'source' | 'reading' | 'split' | 'browser' | 'graph' | 'asset';
+export type ViewMode = 'live' | 'source' | 'reading' | 'split' | 'browser' | 'asset';
 
 export type AssetsLocationMode = 'root' | 'designated' | 'same-folder' | 'subfolder';
+
+export type RtlMode = 'auto' | 'rtl' | 'ltr';
 
 export interface FileItem {
   name: string;
@@ -37,7 +39,8 @@ export interface VaultSettings {
   vaultPath: string;
   assetsMode: AssetsLocationMode;
   designatedFolder: string;
-  defaultViewMode: 'editor' | 'graph' | 'split';
+  defaultViewMode: 'reading' | 'live' | 'source' | 'split';
+  rtlMode: RtlMode;
   theme: 'dark' | 'light';
   fontSize: number;
 }

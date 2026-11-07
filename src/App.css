@@ -158,3 +158,49 @@ body {
 .obsidian-callout:hover {
   transform: translateX(2px);
 }
+
+/* Arabic & RTL (Right-to-Left) Writing Support */
+:root {
+  --font-arabic: "Amiri", "Cairo", "Noto Sans Arabic", "Segoe UI", Tahoma, "Geeza Pro", sans-serif;
+}
+
+[dir="rtl"], .rtl-text, .is-rtl {
+  direction: rtl;
+  text-align: right;
+  font-family: var(--font-arabic), var(--font-sans);
+  unicode-bidi: isolate;
+}
+
+[dir="auto"] {
+  unicode-bidi: plaintext;
+}
+
+/* RTL Prose Adjustments */
+[dir="rtl"] .prose, .prose[dir="rtl"], .rtl-editor {
+  direction: rtl;
+  text-align: right;
+  font-family: var(--font-arabic), var(--font-sans);
+}
+
+[dir="rtl"] .prose ul, [dir="rtl"] .prose ol {
+  padding-left: 0;
+  padding-right: 1.5rem;
+}
+
+[dir="rtl"] .prose blockquote {
+  border-left-width: 0;
+  border-right-width: 4px;
+  border-right-color: #a855f7;
+  padding-left: 0;
+  padding-right: 1rem;
+}
+
+[dir="rtl"] .obsidian-callout {
+  border-left-width: 0;
+  border-right-width: 4px;
+  border-radius: 0.5rem 0 0 0.5rem;
+}
+
+[dir="rtl"] .obsidian-callout:hover {
+  transform: translateX(-2px);
+}

@@ -41,6 +41,109 @@ pub struct VaultStats {
     pub total_size_bytes: u64,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct CliVaultArgs {
+    pub vault_path: Option<String>,
+    pub initial_file: Option<String>,
+}
+
+#[tauri::command]
+fn get_cli_vault_args() -> CliVaultArgs {
+    let args: Vec<String> = std::env::args().collect();
+    let mut vault_path = None;
+    let mut initial_file = None;
+
+    let mut i = 1;
+    while i < args.len() {
+        let arg = &args[i];
+        if (arg == "-v" || arg == "--vault") && i + 1 < args.len() {
+            let candidate = &args[i + 1];
+            let p = Path::new(candidate);
+            if p.is_dir() {
+                vault_path = Some(p.canonicalize().unwrap_or(p.to_path_buf()).to_string_lossy().to_string());
+            }
+            i += 1;
+        } else if !arg.starts_with('-') {
+            let p = Path::new(arg);
+            if p.is_dir() {
+                if vault_path.is_none() {
+                    vault_path = Some(p.canonicalize().unwrap_or(p.to_path_buf()).to_string_lossy().to_string());
+                }
+            } else if p.is_file() {
+                let abs_file = p.canonicalize().unwrap_or(p.to_path_buf());
+                initial_file = Some(abs_file.to_string_lossy().to_string());
+                if vault_path.is_none() {
+                    if let Some(parent) = abs_file.parent() {
+                        vault_path = Some(parent.to_string_lossy().to_string());
+                    }
+                }
+            }
+        }
+        i += 1;
+    }
+
+    CliVaultArgs {
+        vault_path,
+        initial_file,
+    }
+}
+
+#[tauri::command]
+fn pick_vault_folder() -> Result<Option<String>, String> {
+    // 1. Try zenity first (standard on Linux/GNOME)
+    let output = std::process::Command::new("zenity")
+        .args(["--file-selection", "--directory", "--title=Select Vault Folder"])
+        .output();
+    if let Ok(o) = output {
+        if o.status.success() {
+            let path_str = String::from_utf8_lossy(&o.stdout).trim().to_string();
+            if !path_str.is_empty() {
+                return Ok(Some(path_str));
+            }
+        }
+    }
+
+    // 2. Try kdialog (KDE)
+    let koutput = std::process::Command::new("kdialog")
+        .args(["--getexistingdirectory", "."])
+        .output();
+    if let Ok(o) = koutput {
+        if o.status.success() {
+            let path_str = String::from_utf8_lossy(&o.stdout).trim().to_string();
+            if !path_str.is_empty() {
+                return Ok(Some(path_str));
+            }
+        }
+    }
+
+    Ok(None)
+}
+
+#[tauri::command]
+fn open_in_synapse_graph(vault_path: String) -> Result<(), String> {
+    let home = std::env::var("HOME").unwrap_or_default();
+    let local_bin = format!("{}/.local/bin/synapse-graph", home);
+
+    let bin = if std::process::Command::new("which")
+        .arg("synapse-graph")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+    {
+        "synapse-graph".to_string()
+    } else if Path::new(&local_bin).exists() {
+        local_bin
+    } else {
+        "synapse-graph".to_string()
+    };
+
+    std::process::Command::new(&bin)
+        .arg(&vault_path)
+        .spawn()
+        .map_err(|e| format!("Failed to spawn synapse-graph: {}", e))?;
+    Ok(())
+}
+
 fn get_mime_type(ext: &str) -> &'static str {
     match ext.to_lowercase().as_str() {
         "png" => "image/png",
@@ -567,7 +670,10 @@ pub fn run() {
             read_asset_file,
             search_vault,
             get_vault_stats,
-            init_sample_vault
+            init_sample_vault,
+            get_cli_vault_args,
+            pick_vault_folder,
+            open_in_synapse_graph
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

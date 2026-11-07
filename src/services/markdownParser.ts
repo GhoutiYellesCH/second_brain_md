@@ -20,6 +20,13 @@ export interface ParsedMarkdownResult {
   tags: string[];
 }
 
+export function isArabicOrRtlText(text: string): boolean {
+  if (!text) return false;
+  // Arabic Unicode ranges
+  const arabicRegex = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/;
+  return arabicRegex.test(text);
+}
+
 export function extractTags(markdown: string): string[] {
   const tagRegex = /(?:^|\s)#([a-zA-Z0-9_\-\/]+)(?=\s|$|[.,;:!?])/g;
   const tags = new Set<string>();
