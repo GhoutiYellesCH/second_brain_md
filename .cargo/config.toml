@@ -1,0 +1,8 @@
+[env]
+PKG_CONFIG_PATH = { value = "/home/gotoro/.local/usr/lib/x86_64-linux-gnu/pkgconfig:/home/gotoro/.local/usr/share/pkgconfig:/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig", relative = false }
+
+[build]
+rustflags = ["-L", "/home/gotoro/.local/usr/lib/x86_64-linux-gnu", "-L", "/home/gotoro/workspace/second_brain_md/src-tauri/native-libs"]
+
+[target.x86_64-unknown-linux-gnu]
+rustflags = ["-L", "/home/gotoro/.local/usr/lib/x86_64-linux-gnu", "-L", "/home/gotoro/workspace/second_brain_md/src-tauri/native-libs"]

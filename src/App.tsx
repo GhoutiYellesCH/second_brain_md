@@ -1,0 +1,899 @@
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import {
+  FileItem,
+  VaultSettings,
+  VaultStats,
+  EditorTab,
+  GraphNode,
+  GraphLink,
+  ViewMode,
+  HeadingItem,
+  NoteBacklinks,
+  SearchResult,
+} from './types';
+import { vaultApi } from './services/vaultApi';
+import { extractWikilinks, extractTags } from './services/markdownParser';
+import { LeftSidebar } from './components/LeftSidebar';
+import { RightSidebar } from './components/RightSidebar';
+import { ObsidianEditor } from './components/ObsidianEditor';
+import { SynapsesGraph } from './components/SynapsesGraph';
+import { AssetViewer } from './components/AssetViewer';
+import { BrowserView } from './components/BrowserView';
+import { SettingsModal } from './components/SettingsModal';
+import { QuickSwitcher } from './components/QuickSwitcher';
+import {
+  Sparkles,
+  Globe,
+  Plus,
+  Settings,
+  Search,
+  PanelLeft,
+  PanelRight,
+  X,
+  FileText,
+  Image as ImageIcon,
+  FolderOpen,
+} from 'lucide-react';
+
+const DEFAULT_SETTINGS: VaultSettings = {
+  vaultPath: '',
+  assetsMode: 'designated',
+  designatedFolder: 'Attachments',
+  defaultViewMode: 'graph',
+  theme: 'dark',
+  fontSize: 16,
+};
+
+export const App: React.FC = () => {
+  // Settings
+  const [settings, setSettings] = useState<VaultSettings>(() => {
+    const saved = localStorage.getItem('second_brain_settings');
+    if (saved) {
+      try {
+        return { ...DEFAULT_SETTINGS, ...JSON.parse(saved) };
+      } catch {}
+    }
+    return DEFAULT_SETTINGS;
+  });
+
+  // Vault File System State
+  const [tree, setTree] = useState<FileItem | null>(null);
+  const [vaultStats, setVaultStats] = useState<VaultStats>({
+    total_notes: 0,
+    total_assets: 0,
+    total_size_bytes: 0,
+  });
+  const [allNotesContent, setAllNotesContent] = useState<Record<string, string>>({});
+  const [activeFileContent, setActiveFileContent] = useState<string>('');
+  const [starredPaths, setStarredPaths] = useState<string[]>(() => {
+    const saved = localStorage.getItem('second_brain_starred');
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  // Tabs Management
+  const [tabs, setTabs] = useState<EditorTab[]>([]);
+  const [activeTabId, setActiveTabId] = useState<string>('');
+
+  // UI Panels
+  const [showLeftSidebar, setShowLeftSidebar] = useState<boolean>(true);
+  const [showRightSidebar, setShowRightSidebar] = useState<boolean>(true);
+  const [showSettingsModal, setShowSettingsModal] = useState<boolean>(false);
+  const [showQuickSwitcher, setShowQuickSwitcher] = useState<boolean>(false);
+
+  // Search & Outline
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [currentHeadings, setCurrentHeadings] = useState<HeadingItem[]>([]);
+
+  // 1. Initialize Vault on Launch
+  const refreshVault = useCallback(async (customPath?: string) => {
+    try {
+      const vPath = customPath || settings.vaultPath || (await vaultApi.getDefaultVaultPath());
+      if (!settings.vaultPath || customPath) {
+        setSettings((prev) => ({ ...prev, vaultPath: vPath }));
+      }
+
+      const fileTree = await vaultApi.listVaultTree(vPath);
+      setTree(fileTree);
+
+      const stats = await vaultApi.getVaultStats(vPath);
+      setVaultStats(stats);
+
+      // Pre-read markdown notes for graph connections
+      const notesMap: Record<string, string> = {};
+      const traverse = async (item: FileItem) => {
+        if (item.is_dir && item.children) {
+          for (const child of item.children) {
+            await traverse(child);
+          }
+        } else if (item.extension === 'md') {
+          try {
+            const content = await vaultApi.readFileContent(item.path);
+            notesMap[item.path] = content;
+          } catch {}
+        }
+      };
+      await traverse(fileTree);
+      setAllNotesContent(notesMap);
+
+      return { fileTree, notesMap };
+    } catch (err) {
+      console.error('Failed to load vault:', err);
+    }
+  }, [settings.vaultPath]);
+
+  // Initial load effect
+  useEffect(() => {
+    (async () => {
+      const result = await refreshVault();
+      if (!result) return;
+
+      // Check default startup tab
+      if (settings.defaultViewMode === 'graph') {
+        const graphTab: EditorTab = {
+          id: 'graph://synapses',
+          path: 'graph://synapses',
+          title: '⚡ Synapses Graph',
+          viewMode: 'graph',
+          isPinned: true,
+        };
+        setTabs([graphTab]);
+        setActiveTabId(graphTab.id);
+      } else {
+        // Open welcome note or first note
+        const firstNote = Object.keys(result.notesMap)[0];
+        if (firstNote) {
+          openNote(firstNote);
+        }
+      }
+    })();
+  }, []);
+
+  // Save settings in localStorage
+  useEffect(() => {
+    localStorage.setItem('second_brain_settings', JSON.stringify(settings));
+  }, [settings]);
+
+  // Save starred notes in localStorage
+  useEffect(() => {
+    localStorage.setItem('second_brain_starred', JSON.stringify(starredPaths));
+  }, [starredPaths]);
+
+  // Flattened list of notes for search & navigation
+  const flatNoteList = useMemo(() => {
+    const list: { path: string; title: string; relativePath: string }[] = [];
+    if (!tree) return list;
+    const walk = (item: FileItem) => {
+      if (item.is_dir && item.children) {
+        item.children.forEach(walk);
+      } else if (item.extension === 'md') {
+        list.push({
+          path: item.path,
+          title: item.name.replace(/\.md$/, ''),
+          relativePath: item.relative_path,
+        });
+      }
+    };
+    walk(tree);
+    return list;
+  }, [tree]);
+
+  // Active tab getter
+  const activeTab = useMemo(() => {
+    return tabs.find((t) => t.id === activeTabId) || tabs[0];
+  }, [tabs, activeTabId]);
+
+  // Open note in tab
+  const openNote = useCallback(
+    async (filePath: string, mode: ViewMode = 'live') => {
+      const existingTab = tabs.find((t) => t.path === filePath);
+      if (existingTab) {
+        setActiveTabId(existingTab.id);
+        const content = allNotesContent[filePath] || (await vaultApi.readFileContent(filePath));
+        setActiveFileContent(content);
+        return;
+      }
+
+      const noteTitle = filePath.split('/').pop()?.replace(/\.md$/, '') || 'Note';
+      const content = allNotesContent[filePath] || (await vaultApi.readFileContent(filePath));
+      setActiveFileContent(content);
+
+      const newTab: EditorTab = {
+        id: `note-${filePath}`,
+        path: filePath,
+        title: noteTitle,
+        viewMode: mode,
+      };
+
+      setTabs((prev) => [...prev, newTab]);
+      setActiveTabId(newTab.id);
+    },
+    [tabs, allNotesContent]
+  );
+
+  // Open Asset Viewer in tab
+  const openAssetViewer = useCallback(
+    async (assetName: string, assetPath: string) => {
+      const tabId = `asset-${assetPath}`;
+      const existing = tabs.find((t) => t.id === tabId);
+      if (existing) {
+        setActiveTabId(tabId);
+        return;
+      }
+
+      let assetData;
+      try {
+        assetData = await vaultApi.readAssetFile(assetPath);
+      } catch (e) {
+        console.error('Failed to read asset data:', e);
+      }
+
+      const newTab: EditorTab = {
+        id: tabId,
+        path: assetPath,
+        title: `📎 ${assetName}`,
+        viewMode: 'asset',
+        assetData,
+      };
+
+      setTabs((prev) => [...prev, newTab]);
+      setActiveTabId(newTab.id);
+    },
+    [tabs]
+  );
+
+  // Open Synapses Graph tab
+  const openGlobalGraphTab = useCallback(() => {
+    const existing = tabs.find((t) => t.id === 'graph://synapses');
+    if (existing) {
+      setActiveTabId(existing.id);
+      return;
+    }
+    const graphTab: EditorTab = {
+      id: 'graph://synapses',
+      path: 'graph://synapses',
+      title: '⚡ Synapses Graph',
+      viewMode: 'graph',
+    };
+    setTabs((prev) => [...prev, graphTab]);
+    setActiveTabId(graphTab.id);
+  }, [tabs]);
+
+  // Open Browser View tab
+  const openBrowserTab = useCallback(
+    (url?: string) => {
+      const tabId = `browser-${Date.now()}`;
+      const newTab: EditorTab = {
+        id: tabId,
+        path: 'browser://view',
+        title: '🌐 Browser',
+        viewMode: 'browser',
+        browserUrl: url || 'https://en.wikipedia.org/wiki/Obsidian_(software)',
+      };
+      setTabs((prev) => [...prev, newTab]);
+      setActiveTabId(newTab.id);
+    },
+    [tabs]
+  );
+
+  // Close tab
+  const closeTab = (tabId: string, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    const idx = tabs.findIndex((t) => t.id === tabId);
+    if (idx === -1) return;
+
+    const remaining = tabs.filter((t) => t.id !== tabId);
+    setTabs(remaining);
+
+    if (activeTabId === tabId && remaining.length > 0) {
+      const nextActive = remaining[Math.max(0, idx - 1)];
+      setActiveTabId(nextActive.id);
+      if (nextActive.viewMode !== 'graph' && nextActive.viewMode !== 'browser') {
+        const c = allNotesContent[nextActive.path];
+        if (c !== undefined) setActiveFileContent(c);
+      }
+    }
+  };
+
+  // Create new note
+  const handleCreateFile = async (parentDir: string, defaultName?: string) => {
+    const name = defaultName || prompt('Enter note name:', 'New Note');
+    if (!name) return;
+    const sanitized = name.endsWith('.md') ? name : `${name}.md`;
+    const targetDir = parentDir || settings.vaultPath;
+    const fullPath = `${targetDir}/${sanitized}`;
+
+    const template = `# ${name.replace(/\.md$/, '')}\n\nWrite your thoughts with [[wikilinks]] and #tags...\n`;
+    try {
+      await vaultApi.createNewFile(fullPath, template);
+      await refreshVault();
+      openNote(fullPath);
+    } catch (err) {
+      alert(`Could not create note: ${err}`);
+    }
+  };
+
+  // Create new folder
+  const handleCreateFolder = async (parentDir: string) => {
+    const folderName = prompt('Enter folder name:', 'New Folder');
+    if (!folderName) return;
+    const targetDir = parentDir || settings.vaultPath;
+    const fullPath = `${targetDir}/${folderName}`;
+    try {
+      await vaultApi.createNewFolder(fullPath);
+      await refreshVault();
+    } catch (err) {
+      alert(`Could not create folder: ${err}`);
+    }
+  };
+
+  // Delete item
+  const handleDeleteItem = async (path: string) => {
+    if (confirm(`Are you sure you want to delete ${path.split('/').pop()}?`)) {
+      try {
+        await vaultApi.deleteFileOrFolder(path);
+        // Close tab if open
+        const openT = tabs.find((t) => t.path === path);
+        if (openT) closeTab(openT.id);
+        await refreshVault();
+      } catch (err) {
+        alert(`Delete failed: ${err}`);
+      }
+    }
+  };
+
+  // Rename item
+  const handleRenameItem = async (oldPath: string) => {
+    const oldName = oldPath.split('/').pop() || '';
+    const newName = prompt('Enter new name:', oldName);
+    if (!newName || newName === oldName) return;
+
+    const parent = oldPath.substring(0, oldPath.lastIndexOf('/'));
+    const newPath = `${parent}/${newName}`;
+    try {
+      await vaultApi.renameFileOrFolder(oldPath, newPath);
+      await refreshVault();
+    } catch (err) {
+      alert(`Rename failed: ${err}`);
+    }
+  };
+
+  // Handle note content change & auto-save
+  const handleContentChange = (newContent: string) => {
+    setActiveFileContent(newContent);
+    if (activeTab && activeTab.path.endsWith('.md')) {
+      setAllNotesContent((prev) => ({ ...prev, [activeTab.path]: newContent }));
+      // Debounced write
+      vaultApi.writeFileContent(activeTab.path, newContent).catch(console.error);
+    }
+  };
+
+  // Navigate to wikilink note
+  const handleNavigateWikilink = (targetNoteTitle: string) => {
+    const cleanTitle = targetNoteTitle.trim();
+    // Search existing notes
+    const match = flatNoteList.find(
+      (f) => f.title.toLowerCase() === cleanTitle.toLowerCase()
+    );
+    if (match) {
+      openNote(match.path);
+    } else {
+      // Prompt to create note if missing
+      if (confirm(`Note "[[${cleanTitle}]]" does not exist yet. Create it now?`)) {
+        handleCreateFile(settings.vaultPath, cleanTitle);
+      }
+    }
+  };
+
+  // Toggle star
+  const handleToggleStar = (path: string) => {
+    setStarredPaths((prev) =>
+      prev.includes(path) ? prev.filter((p) => p !== path) : [...prev, path]
+    );
+  };
+
+  // Real-time Vault Search
+  useEffect(() => {
+    if (!searchQuery.trim() || !settings.vaultPath) {
+      setSearchResults([]);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      try {
+        const results = await vaultApi.searchVault(settings.vaultPath, searchQuery);
+        setSearchResults(results);
+      } catch {}
+    }, 200);
+    return () => clearTimeout(timer);
+  }, [searchQuery, settings.vaultPath]);
+
+  // Construct Graph Nodes and Links from Vault Notes
+  const { graphNodes, graphLinks, allTagsList } = useMemo(() => {
+    const nodes: GraphNode[] = [];
+    const links: GraphLink[] = [];
+    const nodeMap = new Map<string, GraphNode>();
+    const tagCountMap = new Map<string, number>();
+
+    // 1. Create nodes for all notes
+    flatNoteList.forEach((file, index) => {
+      const content = allNotesContent[file.path] || '';
+      const tags = extractTags(content);
+      tags.forEach((t) => tagCountMap.set(t, (tagCountMap.get(t) || 0) + 1));
+
+      // Color scheme based on directory or first tag
+      const colors = ['#a855f7', '#06b6d4', '#10b981', '#f59e0b', '#ec4899', '#3b82f6'];
+      const color = colors[index % colors.length];
+
+      const node: GraphNode = {
+        id: file.title,
+        title: file.title,
+        path: file.path,
+        tags,
+        connections: 0,
+        x: (Math.random() - 0.5) * 400,
+        y: (Math.random() - 0.5) * 400,
+        vx: 0,
+        vy: 0,
+        radius: 6,
+        color,
+        isOrphan: true,
+      };
+
+      nodes.push(node);
+      nodeMap.set(file.title, node);
+      nodeMap.set(file.path, node);
+    });
+
+    // 2. Create synapses links from wikilinks [[...]]
+    flatNoteList.forEach((file) => {
+      const content = allNotesContent[file.path] || '';
+      const wikilinks = extractWikilinks(content);
+
+      wikilinks.forEach((targetTitle) => {
+        const sourceNode = nodeMap.get(file.title);
+        const targetNode = nodeMap.get(targetTitle);
+
+        if (sourceNode && targetNode && sourceNode.id !== targetNode.id) {
+          links.push({
+            source: sourceNode.id,
+            target: targetNode.id,
+          });
+          sourceNode.connections += 1;
+          targetNode.connections += 1;
+          sourceNode.isOrphan = false;
+          targetNode.isOrphan = false;
+        }
+      });
+    });
+
+    const tagsArray = Array.from(tagCountMap.entries()).map(([tag, count]) => ({
+      tag,
+      count,
+    }));
+    tagsArray.sort((a, b) => b.count - a.count);
+
+    return { graphNodes: nodes, graphLinks: links, allTagsList: tagsArray };
+  }, [flatNoteList, allNotesContent]);
+
+  // Backlinks for active note
+  const activeNoteBacklinks: NoteBacklinks = useMemo(() => {
+    if (!activeTab || !activeTab.path.endsWith('.md')) {
+      return { linkedMentions: [], unlinkedMentions: [], outgoingLinks: [] };
+    }
+    const currentTitle = activeTab.title;
+    const linked: { sourcePath: string; sourceTitle: string; snippet: string }[] = [];
+    const outgoing: { targetTitle: string; targetPath?: string }[] = [];
+
+    // Find outgoing
+    const activeContent = activeFileContent;
+    const activeOut = extractWikilinks(activeContent);
+    activeOut.forEach((target) => {
+      outgoing.push({ targetTitle: target });
+    });
+
+    // Find incoming (who links to currentTitle)
+    Object.entries(allNotesContent).forEach(([p, c]) => {
+      if (p !== activeTab.path) {
+        const out = extractWikilinks(c);
+        if (out.includes(currentTitle)) {
+          const parts = p.split('/');
+          const title = parts[parts.length - 1].replace(/\.md$/, '');
+          const line = c.split('\n').find((l) => l.includes(`[[${currentTitle}`)) || '';
+          linked.push({
+            sourcePath: p,
+            sourceTitle: title,
+            snippet: line.trim(),
+          });
+        }
+      }
+    });
+
+    return { linkedMentions: linked, unlinkedMentions: [], outgoingLinks: outgoing };
+  }, [activeTab, activeFileContent, allNotesContent]);
+
+  // Global hotkeys
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ctrl+O or Ctrl+P: Quick Switcher
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'o' || e.key === 'p')) {
+        e.preventDefault();
+        setShowQuickSwitcher(true);
+      }
+      // Ctrl+G: Synapses Graph
+      if ((e.ctrlKey || e.metaKey) && e.key === 'g') {
+        e.preventDefault();
+        openGlobalGraphTab();
+      }
+      // Ctrl+B: Toggle Sidebar
+      if ((e.ctrlKey || e.metaKey) && e.key === 'b') {
+        e.preventDefault();
+        setShowLeftSidebar((prev) => !prev);
+      }
+      // Ctrl+W: Close active tab
+      if ((e.ctrlKey || e.metaKey) && e.key === 'w' && activeTabId) {
+        e.preventDefault();
+        closeTab(activeTabId);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [activeTabId, openGlobalGraphTab]);
+
+  // Word count & reading stats
+  const stats = useMemo(() => {
+    if (!activeFileContent) return { words: 0, chars: 0, time: 0 };
+    const text = activeFileContent.trim();
+    const words = text ? text.split(/\s+/).length : 0;
+    const chars = text.length;
+    const time = Math.max(1, Math.ceil(words / 200));
+    return { words, chars, time };
+  }, [activeFileContent]);
+
+  return (
+    <div className="flex flex-col w-screen h-screen overflow-hidden bg-[#0e0e11] text-zinc-100 select-none">
+      {/* Top Application Header / Tab Strip */}
+      <header className="flex items-center justify-between px-3 h-10 bg-[#121215] border-b border-zinc-800 text-xs shrink-0">
+        <div className="flex items-center gap-2">
+          {/* Sidebar Toggle Buttons */}
+          <button
+            onClick={() => setShowLeftSidebar(!showLeftSidebar)}
+            className={`p-1.5 rounded transition-colors ${
+              showLeftSidebar ? 'text-purple-400 bg-purple-950/40' : 'text-zinc-400 hover:bg-zinc-800'
+            }`}
+            title="Toggle File Explorer (Ctrl+B)"
+          >
+            <PanelLeft className="w-3.5 h-3.5" />
+          </button>
+
+          <span className="font-bold tracking-wider text-purple-400 font-mono text-[11px] uppercase ml-1 flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-purple-500 animate-pulse" />
+            Second Brain
+          </span>
+
+          <div className="w-[1px] h-4 bg-zinc-800 mx-1" />
+
+          {/* Quick Switcher Trigger */}
+          <button
+            onClick={() => setShowQuickSwitcher(true)}
+            className="flex items-center gap-2 px-2.5 py-1 bg-zinc-900/90 hover:bg-zinc-800 border border-zinc-800 rounded-md text-zinc-400 hover:text-zinc-200 transition-colors"
+          >
+            <Search className="w-3 h-3 text-purple-400" />
+            <span className="text-[11px]">Quick Switcher</span>
+            <kbd className="text-[9px] bg-zinc-800 px-1 py-0.2 rounded font-mono text-zinc-500">
+              Ctrl+O
+            </kbd>
+          </button>
+
+          {/* 1-Click Synapses Graph Button */}
+          <button
+            onClick={openGlobalGraphTab}
+            className="flex items-center gap-1.5 px-2.5 py-1 bg-purple-950/40 hover:bg-purple-900/50 border border-purple-800/40 rounded-md text-purple-300 font-medium transition-colors"
+            title="Open Synapses Graph (Ctrl+G)"
+          >
+            <Sparkles className="w-3 h-3 text-purple-400" />
+            <span>Synapses Graph</span>
+          </button>
+
+          {/* 1-Click Browser View Button */}
+          <button
+            onClick={() => openBrowserTab()}
+            className="flex items-center gap-1.5 px-2.5 py-1 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-md text-zinc-300 font-medium transition-colors"
+            title="Open Web Browser View"
+          >
+            <Globe className="w-3 h-3 text-zinc-400" />
+            <span>Browser View</span>
+          </button>
+        </div>
+
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={() => handleCreateFile(settings.vaultPath)}
+            className="flex items-center gap-1 px-2.5 py-1 bg-purple-600 hover:bg-purple-500 text-white font-medium rounded-md shadow transition-colors"
+            title="Create New Note"
+          >
+            <Plus className="w-3 h-3" />
+            <span>New Note</span>
+          </button>
+
+          <button
+            onClick={() => setShowSettingsModal(true)}
+            className="p-1.5 hover:bg-zinc-800 text-zinc-400 hover:text-white rounded-md transition-colors"
+            title="Vault & Asset Preferences"
+          >
+            <Settings className="w-3.5 h-3.5" />
+          </button>
+
+          <button
+            onClick={() => setShowRightSidebar(!showRightSidebar)}
+            className={`p-1.5 rounded transition-colors ${
+              showRightSidebar ? 'text-purple-400 bg-purple-950/40' : 'text-zinc-400 hover:bg-zinc-800'
+            }`}
+            title="Toggle Local Synapses & Outline"
+          >
+            <PanelRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </header>
+
+      {/* Tabs Strip Bar */}
+      <div className="flex items-center h-8 bg-[#161619] border-b border-zinc-800/80 px-2 gap-1 overflow-x-auto shrink-0 select-none">
+        {tabs.map((tab) => {
+          const isActive = tab.id === activeTabId;
+          return (
+            <div
+              key={tab.id}
+              onClick={() => {
+                setActiveTabId(tab.id);
+                if (tab.viewMode !== 'graph' && tab.viewMode !== 'browser') {
+                  const c = allNotesContent[tab.path];
+                  if (c !== undefined) setActiveFileContent(c);
+                }
+              }}
+              className={`flex items-center gap-2 px-3 py-1 rounded-t-md text-xs cursor-pointer border-t-2 transition-colors max-w-[200px] group ${
+                isActive
+                  ? 'bg-[#18181b] border-purple-500 text-white font-medium'
+                  : 'bg-transparent border-transparent text-zinc-400 hover:bg-zinc-850 hover:text-zinc-200'
+              }`}
+            >
+              {tab.viewMode === 'graph' ? (
+                <Sparkles className="w-3 h-3 text-purple-400 shrink-0" />
+              ) : tab.viewMode === 'browser' ? (
+                <Globe className="w-3 h-3 text-blue-400 shrink-0" />
+              ) : tab.viewMode === 'asset' ? (
+                <ImageIcon className="w-3 h-3 text-amber-400 shrink-0" />
+              ) : (
+                <FileText className="w-3 h-3 text-purple-400 shrink-0" />
+              )}
+
+              <span className="truncate">{tab.title}</span>
+
+              {!tab.isPinned && (
+                <button
+                  onClick={(e) => closeTab(tab.id, e)}
+                  className="opacity-0 group-hover:opacity-100 hover:bg-zinc-700/80 p-0.5 rounded text-zinc-400 hover:text-white transition-opacity"
+                >
+                  <X className="w-2.5 h-2.5" />
+                </button>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Main Workspace Body */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* Left Sidebar */}
+        {showLeftSidebar && (
+          <LeftSidebar
+            tree={tree}
+            activeFilePath={activeTab?.path}
+            onFileSelect={(path, isDir) => {
+              if (!isDir) {
+                const ext = path.split('.').pop()?.toLowerCase();
+                if (ext === 'md') {
+                  openNote(path);
+                } else {
+                  const name = path.split('/').pop() || 'Asset';
+                  openAssetViewer(name, path);
+                }
+              }
+            }}
+            onCreateFile={(parentDir) => handleCreateFile(parentDir)}
+            onCreateFolder={(parentDir) => handleCreateFolder(parentDir)}
+            onDelete={(path) => handleDeleteItem(path)}
+            onRename={(oldPath) => handleRenameItem(oldPath)}
+            onSearchSelect={(result) => {
+              openNote(result.path);
+            }}
+            onTagSelect={(_tag) => {
+              // Open global graph filtered by tag or search
+              openGlobalGraphTab();
+            }}
+            onOpenSettings={() => setShowSettingsModal(true)}
+            onOpenGlobalGraph={openGlobalGraphTab}
+            searchResults={searchResults}
+            onSearchQueryChange={setSearchQuery}
+            searchQuery={searchQuery}
+            allTags={allTagsList}
+            starredPaths={starredPaths}
+            onToggleStar={handleToggleStar}
+            settings={settings}
+          />
+        )}
+
+        {/* Center Main Stage */}
+        <main className="flex-1 flex flex-col h-full overflow-hidden bg-[#18181b] relative">
+          {activeTab ? (
+            <>
+              {/* Tab Mode: Full Synapses Graph */}
+              {activeTab.viewMode === 'graph' && (
+                <SynapsesGraph
+                  nodes={graphNodes}
+                  links={graphLinks}
+                  activeNotePath={tabs.find((t) => t.path.endsWith('.md'))?.path}
+                  onNodeClick={(node) => {
+                    openNote(node.path);
+                  }}
+                />
+              )}
+
+              {/* Tab Mode: Browser View */}
+              {activeTab.viewMode === 'browser' && (
+                <BrowserView initialUrl={activeTab.browserUrl} />
+              )}
+
+              {/* Tab Mode: Asset Reader */}
+              {activeTab.viewMode === 'asset' && (
+                <AssetViewer
+                  assetName={activeTab.title.replace(/^📎\s*/, '')}
+                  assetPath={activeTab.path}
+                  assetData={activeTab.assetData}
+                  onInsertIntoNote={(wikilink) => {
+                    const lastNoteTab = tabs.find((t) => t.path.endsWith('.md'));
+                    if (lastNoteTab) {
+                      setActiveTabId(lastNoteTab.id);
+                      handleContentChange(activeFileContent + `\n${wikilink}\n`);
+                    }
+                  }}
+                />
+              )}
+
+              {/* Tab Mode: Markdown Editor Modes (Live, Reading, Source, Split) */}
+              {activeTab.viewMode !== 'graph' &&
+                activeTab.viewMode !== 'browser' &&
+                activeTab.viewMode !== 'asset' && (
+                  <ObsidianEditor
+                    content={activeFileContent}
+                    onChange={handleContentChange}
+                    filePath={activeTab.path}
+                    settings={settings}
+                    viewMode={activeTab.viewMode}
+                    onViewModeChange={(mode) => {
+                      setTabs((prev) =>
+                        prev.map((t) => (t.id === activeTab.id ? { ...t, viewMode: mode } : t))
+                      );
+                    }}
+                    onNavigateWikilink={handleNavigateWikilink}
+                    onOpenAssetViewer={openAssetViewer}
+                    onOutlineExtracted={setCurrentHeadings}
+                  />
+                )}
+            </>
+          ) : (
+            <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-zinc-500">
+              <Sparkles className="w-12 h-12 text-purple-500/40 mb-3 animate-pulse" />
+              <h2 className="text-zinc-300 font-semibold text-base mb-1">
+                No note or synapses tab open
+              </h2>
+              <p className="text-xs text-zinc-500 max-w-sm mb-6">
+                Open a note from the File Explorer, create a new thought, or open the Synapses Graph!
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={openGlobalGraphTab}
+                  className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-lg text-xs font-semibold shadow"
+                >
+                  ⚡ Open Synapses Graph
+                </button>
+                <button
+                  onClick={() => handleCreateFile(settings.vaultPath)}
+                  className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-lg text-xs font-semibold"
+                >
+                  Create New Note
+                </button>
+              </div>
+            </div>
+          )}
+        </main>
+
+        {/* Right Sidebar (Local Synapses, Backlinks, Outline) */}
+        {showRightSidebar && (
+          <RightSidebar
+            activeNoteTitle={activeTab?.title || ''}
+            activeNotePath={activeTab?.path || ''}
+            nodes={graphNodes}
+            links={graphLinks}
+            backlinks={activeNoteBacklinks}
+            headings={currentHeadings}
+            onNodeClick={(node) => openNote(node.path)}
+            onNavigateToNote={handleNavigateWikilink}
+            onClose={() => setShowRightSidebar(false)}
+          />
+        )}
+      </div>
+
+      {/* Bottom Status Bar */}
+      <footer className="h-6 bg-[#101012] border-t border-zinc-800/80 px-3 flex items-center justify-between text-[11px] text-zinc-500 shrink-0 font-mono select-none">
+        <div className="flex items-center gap-3">
+          <span className="flex items-center gap-1.5 text-zinc-400">
+            <FolderOpen className="w-3 h-3 text-purple-400" />
+            <span className="truncate max-w-[200px]" title={settings.vaultPath}>
+              {settings.vaultPath.split('/').pop() || 'Vault'}
+            </span>
+          </span>
+
+          <span className="text-zinc-700">•</span>
+
+          <span className="text-zinc-400">
+            Assets Folder:{' '}
+            <strong className="text-purple-400">
+              {settings.assetsMode === 'designated'
+                ? settings.designatedFolder
+                : settings.assetsMode}
+            </strong>
+          </span>
+
+          <span className="text-zinc-700">•</span>
+
+          <span>
+            Synapses Graph: <strong className="text-zinc-300">{graphNodes.length}</strong> nodes,{' '}
+            <strong className="text-zinc-300">{graphLinks.length}</strong> links
+          </span>
+        </div>
+
+        <div className="flex items-center gap-3">
+          {activeTab && activeTab.path.endsWith('.md') && (
+            <>
+              <span>{stats.words} words</span>
+              <span>{stats.chars} characters</span>
+              <span>{stats.time} min read</span>
+              <span className="text-zinc-700">•</span>
+            </>
+          )}
+          <span className="text-purple-400 uppercase font-semibold text-[10px]">
+            {activeTab?.viewMode || 'READY'}
+          </span>
+        </div>
+      </footer>
+
+      {/* Modals */}
+      {showSettingsModal && (
+        <SettingsModal
+          settings={settings}
+          onSaveSettings={(newSettings) => {
+            setSettings(newSettings);
+            if (newSettings.vaultPath !== settings.vaultPath) {
+              refreshVault(newSettings.vaultPath);
+            }
+          }}
+          onClose={() => setShowSettingsModal(false)}
+          vaultStats={vaultStats}
+          onReinitSampleVault={async () => {
+            await vaultApi.initSampleVault(settings.vaultPath);
+            await refreshVault();
+          }}
+        />
+      )}
+
+      {showQuickSwitcher && (
+        <QuickSwitcher
+          isOpen={showQuickSwitcher}
+          onClose={() => setShowQuickSwitcher(false)}
+          files={flatNoteList}
+          onSelectNote={openNote}
+          onCreateNote={(title) => handleCreateFile(settings.vaultPath, title)}
+        />
+      )}
+    </div>
+  );
+};
