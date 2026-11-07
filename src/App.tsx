@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   FileItem,
   VaultSettings,
@@ -62,7 +62,8 @@ export const App: React.FC = () => {
     total_assets: 0,
     total_size_bytes: 0,
   });
-  const [allNotesContent, setAllNotesContent] = useState<Record<string, string>>({});
+  // Fast note cache to avoid eager loading or memory bloat
+  const noteCacheRef = useRef<Map<string, string>>(new Map());
   const [activeFileContent, setActiveFileContent] = useState<string>('');
   const [starredPaths, setStarredPaths] = useState<string[]>(() => {
     const saved = localStorage.getItem('second_brain_starred');
@@ -79,12 +80,45 @@ export const App: React.FC = () => {
   const [showSettingsModal, setShowSettingsModal] = useState<boolean>(false);
   const [showQuickSwitcher, setShowQuickSwitcher] = useState<boolean>(false);
 
-  // Search & Outline
+  // Search, Outline & Tags
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [currentHeadings, setCurrentHeadings] = useState<HeadingItem[]>([]);
+  const [vaultTags, setVaultTags] = useState<{ tag: string; count: number }[]>([]);
+  const tagCacheRef = useRef<Map<string, string[]>>(new Map());
 
-  // 1. Initialize Vault on Launch
+  // Update tag cache progressively as notes are opened or edited
+  const updateNoteTags = useCallback((path: string, content: string) => {
+    const tags = extractTags(content);
+    tagCacheRef.current.set(path, tags);
+
+    const countMap = new Map<string, number>();
+    tagCacheRef.current.forEach((tList: string[]) => {
+      tList.forEach((t: string) => countMap.set(t, (countMap.get(t) || 0) + 1));
+    });
+
+    const tagsArray = Array.from(countMap.entries())
+      .map(([tag, count]) => ({ tag, count }))
+      .sort((a, b) => b.count - a.count);
+
+    setVaultTags(tagsArray);
+  }, []);
+
+  // Helper to find the first markdown note in tree
+  const findFirstMarkdownFile = (item: FileItem): string | null => {
+    if (!item.is_dir && item.extension === 'md') {
+      return item.path;
+    }
+    if (item.children) {
+      for (const child of item.children) {
+        const found = findFirstMarkdownFile(child);
+        if (found) return found;
+      }
+    }
+    return null;
+  };
+
+  // 1. Initialize Vault on Launch (Fast lazy tree & stats)
   const refreshVault = useCallback(async (customPath?: string) => {
     try {
       const vPath = customPath || settings.vaultPath || (await vaultApi.getDefaultVaultPath());
@@ -98,24 +132,7 @@ export const App: React.FC = () => {
       const stats = await vaultApi.getVaultStats(vPath);
       setVaultStats(stats);
 
-      // Pre-read markdown notes for backlinks & metadata
-      const notesMap: Record<string, string> = {};
-      const traverse = async (item: FileItem) => {
-        if (item.is_dir && item.children) {
-          for (const child of item.children) {
-            await traverse(child);
-          }
-        } else if (item.extension === 'md') {
-          try {
-            const content = await vaultApi.readFileContent(item.path);
-            notesMap[item.path] = content;
-          } catch {}
-        }
-      };
-      await traverse(fileTree);
-      setAllNotesContent(notesMap);
-
-      return { fileTree, notesMap };
+      return { fileTree };
     } catch (err) {
       console.error('Failed to load vault:', err);
     }
@@ -143,7 +160,7 @@ export const App: React.FC = () => {
     }
   };
 
-  // Initial load effect
+  // Initial load effect (instant load, no synchronous whole-vault reading)
   useEffect(() => {
     (async () => {
       // 1. Check CLI arguments (e.g. `second-brain /path/to/folder` or `-v /path/to/folder`)
@@ -158,13 +175,43 @@ export const App: React.FC = () => {
         openNote(cliArgs.initial_file);
       } else {
         // Open first note or welcome note
-        const firstNote = Object.keys(result.notesMap)[0];
+        const firstNote = findFirstMarkdownFile(result.fileTree);
         if (firstNote) {
           openNote(firstNote);
         }
       }
     })();
   }, []);
+
+  // Background idle tag indexer (runs once after startup without blocking UI)
+  useEffect(() => {
+    if (!settings.vaultPath) return;
+    const idleTimer = setTimeout(async () => {
+      try {
+        const results = await vaultApi.searchVault(settings.vaultPath, '#');
+        results.forEach((r) => {
+          const tags = extractTags(r.snippet);
+          if (tags.length > 0) {
+            const existing = tagCacheRef.current.get(r.path) || [];
+            const combined = Array.from(new Set([...existing, ...tags]));
+            tagCacheRef.current.set(r.path, combined);
+          }
+        });
+        const countMap = new Map<string, number>();
+        tagCacheRef.current.forEach((tList: string[]) => {
+          tList.forEach((t: string) => countMap.set(t, (countMap.get(t) || 0) + 1));
+        });
+        const tagsArray = Array.from(countMap.entries())
+          .map(([tag, count]) => ({ tag, count }))
+          .sort((a, b) => b.count - a.count);
+        setVaultTags(tagsArray);
+      } catch (err) {
+        console.error('Background tag discovery error:', err);
+      }
+    }, 1200);
+
+    return () => clearTimeout(idleTimer);
+  }, [settings.vaultPath]);
 
   // Save settings in localStorage
   useEffect(() => {
@@ -206,14 +253,24 @@ export const App: React.FC = () => {
       const existingTab = tabs.find((t) => t.path === filePath);
       if (existingTab) {
         setActiveTabId(existingTab.id);
-        const content = allNotesContent[filePath] || (await vaultApi.readFileContent(filePath));
+        let content = noteCacheRef.current.get(filePath);
+        if (content === undefined) {
+          content = await vaultApi.readFileContent(filePath);
+          noteCacheRef.current.set(filePath, content);
+        }
         setActiveFileContent(content);
+        updateNoteTags(filePath, content);
         return;
       }
 
       const noteTitle = filePath.split('/').pop()?.replace(/\.md$/, '') || 'Note';
-      const content = allNotesContent[filePath] || (await vaultApi.readFileContent(filePath));
+      let content = noteCacheRef.current.get(filePath);
+      if (content === undefined) {
+        content = await vaultApi.readFileContent(filePath);
+        noteCacheRef.current.set(filePath, content);
+      }
       setActiveFileContent(content);
+      updateNoteTags(filePath, content);
 
       const newTab: EditorTab = {
         id: `note-${filePath}`,
@@ -225,7 +282,24 @@ export const App: React.FC = () => {
       setTabs((prev) => [...prev, newTab]);
       setActiveTabId(newTab.id);
     },
-    [tabs, allNotesContent]
+    [tabs, updateNoteTags]
+  );
+
+  // Select tab helper
+  const selectTab = useCallback(
+    async (tab: EditorTab) => {
+      setActiveTabId(tab.id);
+      if (tab.viewMode !== 'browser' && tab.viewMode !== 'asset') {
+        let content = noteCacheRef.current.get(tab.path);
+        if (content === undefined) {
+          content = await vaultApi.readFileContent(tab.path);
+          noteCacheRef.current.set(tab.path, content);
+        }
+        setActiveFileContent(content);
+        updateNoteTags(tab.path, content);
+      }
+    },
+    [updateNoteTags]
   );
 
   // Open Asset Viewer in tab
@@ -289,8 +363,15 @@ export const App: React.FC = () => {
       const nextActive = remaining[Math.max(0, idx - 1)];
       setActiveTabId(nextActive.id);
       if (nextActive.viewMode !== 'browser' && nextActive.viewMode !== 'asset') {
-        const c = allNotesContent[nextActive.path];
-        if (c !== undefined) setActiveFileContent(c);
+        const c = noteCacheRef.current.get(nextActive.path);
+        if (c !== undefined) {
+          setActiveFileContent(c);
+        } else {
+          vaultApi.readFileContent(nextActive.path).then((content) => {
+            noteCacheRef.current.set(nextActive.path, content);
+            setActiveFileContent(content);
+          });
+        }
       }
     }
   };
@@ -358,15 +439,15 @@ export const App: React.FC = () => {
     }
   };
 
-  // Handle note content change & auto-save
-  const handleContentChange = (newContent: string) => {
+  // Handle note content change & auto-save (debounced by ObsidianEditor)
+  const handleContentChange = useCallback((newContent: string) => {
     setActiveFileContent(newContent);
     if (activeTab && activeTab.path.endsWith('.md')) {
-      setAllNotesContent((prev) => ({ ...prev, [activeTab.path]: newContent }));
-      // Debounced write
+      noteCacheRef.current.set(activeTab.path, newContent);
       vaultApi.writeFileContent(activeTab.path, newContent).catch(console.error);
+      updateNoteTags(activeTab.path, newContent);
     }
-  };
+  }, [activeTab, updateNoteTags]);
 
   // Navigate to wikilink note
   const handleNavigateWikilink = (targetNoteTitle: string) => {
@@ -407,57 +488,57 @@ export const App: React.FC = () => {
     return () => clearTimeout(timer);
   }, [searchQuery, settings.vaultPath]);
 
-  // Extract all tags from notes
-  const allTagsList = useMemo(() => {
-    const tagCountMap = new Map<string, number>();
-    flatNoteList.forEach((file) => {
-      const content = allNotesContent[file.path] || '';
-      const tags = extractTags(content);
-      tags.forEach((t) => tagCountMap.set(t, (tagCountMap.get(t) || 0) + 1));
-    });
-    const tagsArray = Array.from(tagCountMap.entries()).map(([tag, count]) => ({
-      tag,
-      count,
-    }));
-    tagsArray.sort((a, b) => b.count - a.count);
-    return tagsArray;
-  }, [flatNoteList, allNotesContent]);
+  // Backlinks for active note (async Rust search, zero main-thread block, never lags editor)
+  const [activeNoteBacklinks, setActiveNoteBacklinks] = useState<NoteBacklinks>({
+    linkedMentions: [],
+    unlinkedMentions: [],
+    outgoingLinks: [],
+  });
 
-  // Backlinks for active note
-  const activeNoteBacklinks: NoteBacklinks = useMemo(() => {
+  useEffect(() => {
     if (!activeTab || !activeTab.path.endsWith('.md')) {
-      return { linkedMentions: [], unlinkedMentions: [], outgoingLinks: [] };
+      setActiveNoteBacklinks({ linkedMentions: [], unlinkedMentions: [], outgoingLinks: [] });
+      return;
     }
+
     const currentTitle = activeTab.title;
-    const linked: { sourcePath: string; sourceTitle: string; snippet: string }[] = [];
-    const outgoing: { targetTitle: string; targetPath?: string }[] = [];
+    const outgoing = extractWikilinks(activeFileContent).map((target) => ({ targetTitle: target }));
 
-    // Find outgoing
-    const activeContent = activeFileContent;
-    const activeOut = extractWikilinks(activeContent);
-    activeOut.forEach((target) => {
-      outgoing.push({ targetTitle: target });
-    });
+    setActiveNoteBacklinks((prev) => ({
+      ...prev,
+      outgoingLinks: outgoing,
+    }));
 
-    // Find incoming (who links to currentTitle)
-    Object.entries(allNotesContent).forEach(([p, c]) => {
-      if (p !== activeTab.path) {
-        const out = extractWikilinks(c);
-        if (out.includes(currentTitle)) {
-          const parts = p.split('/');
-          const title = parts[parts.length - 1].replace(/\.md$/, '');
-          const line = c.split('\n').find((l) => l.includes(`[[${currentTitle}`)) || '';
-          linked.push({
-            sourcePath: p,
-            sourceTitle: title,
-            snippet: line.trim(),
+    if (!settings.vaultPath) return;
+
+    let isCancelled = false;
+    const searchTimer = setTimeout(() => {
+      const query = `[[${currentTitle}`;
+      vaultApi
+        .searchVault(settings.vaultPath, query)
+        .then((results) => {
+          if (isCancelled) return;
+          const linked = results
+            .filter((r) => r.path !== activeTab.path)
+            .map((r) => ({
+              sourcePath: r.path,
+              sourceTitle: r.title,
+              snippet: r.snippet,
+            }));
+          setActiveNoteBacklinks({
+            linkedMentions: linked,
+            unlinkedMentions: [],
+            outgoingLinks: outgoing,
           });
-        }
-      }
-    });
+        })
+        .catch(console.error);
+    }, 150);
 
-    return { linkedMentions: linked, unlinkedMentions: [], outgoingLinks: outgoing };
-  }, [activeTab, activeFileContent, allNotesContent]);
+    return () => {
+      isCancelled = true;
+      clearTimeout(searchTimer);
+    };
+  }, [activeTab?.path, activeTab?.title, settings.vaultPath]);
 
   // Global hotkeys
   useEffect(() => {
@@ -600,13 +681,7 @@ export const App: React.FC = () => {
           return (
             <div
               key={tab.id}
-              onClick={() => {
-                setActiveTabId(tab.id);
-                if (tab.viewMode !== 'browser' && tab.viewMode !== 'asset') {
-                  const c = allNotesContent[tab.path];
-                  if (c !== undefined) setActiveFileContent(c);
-                }
-              }}
+              onClick={() => selectTab(tab)}
               className={`flex items-center gap-2 px-3 py-1 rounded-t-md text-xs cursor-pointer border-t-2 transition-colors max-w-[200px] group ${
                 isActive
                   ? 'bg-[#18181b] border-purple-500 text-white font-medium'
@@ -670,7 +745,7 @@ export const App: React.FC = () => {
             searchResults={searchResults}
             onSearchQueryChange={setSearchQuery}
             searchQuery={searchQuery}
-            allTags={allTagsList}
+            allTags={vaultTags}
             starredPaths={starredPaths}
             onToggleStar={handleToggleStar}
             settings={settings}

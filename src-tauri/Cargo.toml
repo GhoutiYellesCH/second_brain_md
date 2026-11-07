@@ -1,6 +1,6 @@
 [package]
 name = "second-brain"
-version = "1.0.1"
+version = "1.0.2"
 description = "Second Brain - Obsidian-Compatible Vault & Synapses Graph"
 authors = ["Ghouti Yelles Chaouche"]
 edition = "2024"

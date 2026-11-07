@@ -52,6 +52,81 @@ export const ObsidianEditor: React.FC<ObsidianEditorProps> = ({
   const [assetUrls, setAssetUrls] = useState<Record<string, string>>({});
   const [isDragOver, setIsDragOver] = useState<boolean>(false);
 
+  // Local text state for instantaneous (0ms) keystroke response
+  const [localText, setLocalText] = useState<string>(content);
+  const [debouncedText, setDebouncedText] = useState<string>(content);
+  const saveTimerRef = useRef<number | null>(null);
+  const isTypingRef = useRef<boolean>(false);
+  const currentFilePathRef = useRef<string>(filePath);
+  const lastSavedRef = useRef<string>(content);
+
+  // Synchronize when filePath changes or external content changes while idle
+  useEffect(() => {
+    if (currentFilePathRef.current !== filePath) {
+      // Flush previous file if dirty
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = null;
+        if (localText !== lastSavedRef.current) {
+          onChange(localText);
+        }
+      }
+      currentFilePathRef.current = filePath;
+      setLocalText(content);
+      setDebouncedText(content);
+      lastSavedRef.current = content;
+      isTypingRef.current = false;
+    } else if (content !== localText && !isTypingRef.current) {
+      setLocalText(content);
+      setDebouncedText(content);
+      lastSavedRef.current = content;
+    }
+  }, [filePath, content, localText, onChange]);
+
+  // Debounce preview rendering for live/split modes (150ms)
+  useEffect(() => {
+    if (viewMode === 'source') return;
+    const timer = setTimeout(() => {
+      setDebouncedText(localText);
+    }, 150);
+    return () => clearTimeout(timer);
+  }, [localText, viewMode]);
+
+  // Immediate save flush on blur or unmount
+  const flushSave = () => {
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+    isTypingRef.current = false;
+    if (localText !== lastSavedRef.current) {
+      lastSavedRef.current = localText;
+      onChange(localText);
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current);
+      }
+    };
+  }, []);
+
+  // Instant typing handler
+  const handleTextareaChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const val = e.target.value;
+    setLocalText(val); // 0ms delay inside editor!
+    isTypingRef.current = true;
+
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = window.setTimeout(() => {
+      isTypingRef.current = false;
+      lastSavedRef.current = val;
+      onChange(val);
+    }, 350);
+  };
+
   // Arabic / RTL Writing Direction State
   const [editorRtl, setEditorRtl] = useState<'auto' | 'rtl' | 'ltr'>(settings.rtlMode || 'auto');
 
@@ -59,25 +134,31 @@ export const ObsidianEditor: React.FC<ObsidianEditorProps> = ({
   const isContentRtl = useMemo(() => {
     if (editorRtl === 'rtl') return true;
     if (editorRtl === 'ltr') return false;
-    return isArabicOrRtlText(content);
-  }, [content, editorRtl]);
+    return isArabicOrRtlText(localText);
+  }, [localText, editorRtl]);
 
-  // Parse markdown content
+  // Parse markdown content only for preview modes (never parse in source mode)
   const parsed = useMemo(() => {
-    return parseMarkdown(content, filePath, settings, assetUrls);
-  }, [content, filePath, settings, assetUrls]);
+    if (viewMode === 'source') {
+      return { html: '', headings: [] };
+    }
+    return parseMarkdown(debouncedText, filePath, settings, assetUrls);
+  }, [debouncedText, filePath, settings, assetUrls, viewMode]);
 
   // Notify parent of headings for Outline pane
   useEffect(() => {
-    onOutlineExtracted?.(parsed.headings);
+    if (parsed.headings && parsed.headings.length > 0) {
+      onOutlineExtracted?.(parsed.headings);
+    }
   }, [parsed.headings, onOutlineExtracted]);
 
-  // Load and cache asset previews from vault
+  // Load and cache asset previews from vault (on debounced text, not on every keystroke)
   useEffect(() => {
+    if (viewMode === 'source') return;
     const assetRegex = /!\[\[(.*?)\]\]/g;
     let match;
     const assetsToLoad: string[] = [];
-    while ((match = assetRegex.exec(content)) !== null) {
+    while ((match = assetRegex.exec(debouncedText)) !== null) {
       const assetName = match[1].split('|')[0].trim();
       assetsToLoad.push(assetName);
     }
@@ -107,7 +188,7 @@ export const ObsidianEditor: React.FC<ObsidianEditorProps> = ({
     return () => {
       isMounted = false;
     };
-  }, [content, filePath, settings]);
+  }, [debouncedText, filePath, settings, viewMode]);
 
   // Handle clicks inside rendered preview (wikilinks, copy code, asset clicks)
   const handlePreviewClick = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -160,8 +241,13 @@ export const ObsidianEditor: React.FC<ObsidianEditorProps> = ({
         const checked = target.checked;
         const targetSearch = checked ? `- [ ] ${itemText}` : `- [x] ${itemText}`;
         const replacement = checked ? `- [x] ${itemText}` : `- [ ] ${itemText}`;
-        if (content.includes(targetSearch)) {
-          onChange(content.replace(targetSearch, replacement));
+        if (localText.includes(targetSearch)) {
+          const updated = localText.replace(targetSearch, replacement);
+          setLocalText(updated);
+          setDebouncedText(updated);
+          lastSavedRef.current = updated;
+          if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+          onChange(updated);
         }
       }
     }
@@ -174,10 +260,14 @@ export const ObsidianEditor: React.FC<ObsidianEditorProps> = ({
 
     const start = textarea.selectionStart;
     const end = textarea.selectionEnd;
-    const selected = content.substring(start, end) || defaultPlaceholder;
+    const selected = localText.substring(start, end) || defaultPlaceholder;
 
     const newContent =
-      content.substring(0, start) + before + selected + after + content.substring(end);
+      localText.substring(0, start) + before + selected + after + localText.substring(end);
+    setLocalText(newContent);
+    setDebouncedText(newContent);
+    lastSavedRef.current = newContent;
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     onChange(newContent);
 
     setTimeout(() => {
@@ -479,8 +569,9 @@ export const ObsidianEditor: React.FC<ObsidianEditorProps> = ({
           <textarea
             ref={textareaRef}
             dir={isContentRtl ? 'rtl' : 'auto'}
-            value={content}
-            onChange={(e) => onChange(e.target.value)}
+            value={localText}
+            onChange={handleTextareaChange}
+            onBlur={flushSave}
             onPaste={handlePaste}
             placeholder="Write your markdown note here..."
             className={`w-full h-full bg-[#161619] text-zinc-100 font-mono p-6 resize-none outline-none leading-relaxed text-sm selection:bg-purple-900/60 ${
@@ -511,8 +602,9 @@ export const ObsidianEditor: React.FC<ObsidianEditorProps> = ({
               <textarea
                 ref={textareaRef}
                 dir={isContentRtl ? 'rtl' : 'auto'}
-                value={content}
-                onChange={(e) => onChange(e.target.value)}
+                value={localText}
+                onChange={handleTextareaChange}
+                onBlur={flushSave}
                 onPaste={handlePaste}
                 placeholder="Write your note in markdown..."
                 className={`w-full h-full bg-[#161619] text-zinc-100 font-mono p-5 resize-none outline-none leading-relaxed text-sm selection:bg-purple-900/60 ${
@@ -541,8 +633,9 @@ export const ObsidianEditor: React.FC<ObsidianEditorProps> = ({
               <textarea
                 ref={textareaRef}
                 dir={isContentRtl ? 'rtl' : 'auto'}
-                value={content}
-                onChange={(e) => onChange(e.target.value)}
+                value={localText}
+                onChange={handleTextareaChange}
+                onBlur={flushSave}
                 onPaste={handlePaste}
                 placeholder="Start typing your thoughts with [[wikilinks]], #tags, and assets..."
                 className={`w-full min-h-[300px] bg-transparent text-zinc-100 font-mono resize-none outline-none leading-relaxed text-sm border-b border-zinc-800/80 pb-6 focus:border-purple-500/80 transition-colors ${
