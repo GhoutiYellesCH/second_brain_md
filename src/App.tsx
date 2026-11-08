@@ -33,27 +33,61 @@ import {
   Languages,
 } from 'lucide-react';
 
+export const DEFAULT_CORE_PLUGINS = {
+  graph: true,
+  canvas: true,
+  slides: true,
+  quickSwitcher: true,
+  commandPalette: true,
+  templates: true,
+  bookmarks: true,
+  tags: true,
+  recovery: true,
+  outline: true,
+  wordCount: true,
+  wikilinks: true,
+  browser: true,
+};
+
 const DEFAULT_SETTINGS: VaultSettings = {
   vaultPath: '',
   assetsMode: 'designated',
   designatedFolder: 'Attachments',
   defaultViewMode: 'reading',
   rtlMode: 'auto',
-  theme: 'dark',
+  theme: 'tokyo-night',
+  baseColor: 'tokyo-night',
+  accentColor: '#7aa2f7',
+  corePlugins: DEFAULT_CORE_PLUGINS,
   fontSize: 16,
 };
 
 export const App: React.FC = () => {
   // Settings
   const [settings, setSettings] = useState<VaultSettings>(() => {
-    const saved = localStorage.getItem('second_brain_settings');
+    const saved = localStorage.getItem('synapse_settings') || localStorage.getItem('second_brain_settings');
     if (saved) {
       try {
-        return { ...DEFAULT_SETTINGS, ...JSON.parse(saved) };
+        const parsed = JSON.parse(saved);
+        return {
+          ...DEFAULT_SETTINGS,
+          ...parsed,
+          corePlugins: { ...DEFAULT_CORE_PLUGINS, ...(parsed.corePlugins || {}) },
+        };
       } catch {}
     }
     return DEFAULT_SETTINGS;
   });
+
+  // Apply Theme & Base Color to root
+  useEffect(() => {
+    const theme = settings.theme || 'tokyo-night';
+    document.documentElement.setAttribute('data-theme', theme);
+    document.documentElement.setAttribute('data-base-color', settings.baseColor || 'tokyo-night');
+    if (settings.accentColor) {
+      document.documentElement.style.setProperty('--synapse-accent', settings.accentColor);
+    }
+  }, [settings.theme, settings.baseColor, settings.accentColor]);
 
   // Vault File System State
   const [tree, setTree] = useState<FileItem | null>(null);
@@ -594,9 +628,9 @@ export const App: React.FC = () => {
             <PanelLeft className="w-3.5 h-3.5" />
           </button>
 
-          <span className="font-bold tracking-wider text-purple-400 font-mono text-[11px] uppercase ml-1 flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-purple-500 animate-pulse" />
-            Second Brain
+          <span className="font-bold tracking-wider text-[#7aa2f7] font-mono text-[11px] uppercase ml-1 flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-[#7aa2f7] animate-pulse" />
+            Synapse
           </span>
 
           <div className="w-[1px] h-4 bg-zinc-800 mx-1" />
@@ -612,36 +646,42 @@ export const App: React.FC = () => {
           </button>
 
           {/* Quick Switcher Trigger */}
-          <button
-            onClick={() => setShowQuickSwitcher(true)}
-            className="flex items-center gap-2 px-2.5 py-1 bg-zinc-900/90 hover:bg-zinc-800 border border-zinc-800 rounded-md text-zinc-400 hover:text-zinc-200 transition-colors"
-          >
-            <Search className="w-3 h-3 text-purple-400" />
-            <span className="text-[11px]">Quick Switcher</span>
-            <kbd className="text-[9px] bg-zinc-800 px-1 py-0.2 rounded font-mono text-zinc-500">
-              Ctrl+O
-            </kbd>
-          </button>
+          {settings.corePlugins?.quickSwitcher !== false && (
+            <button
+              onClick={() => setShowQuickSwitcher(true)}
+              className="flex items-center gap-2 px-2.5 py-1 bg-zinc-900/90 hover:bg-zinc-800 border border-zinc-800 rounded-md text-zinc-400 hover:text-zinc-200 transition-colors"
+            >
+              <Search className="w-3 h-3 text-[#7aa2f7]" />
+              <span className="text-[11px]">Quick Switcher</span>
+              <kbd className="text-[9px] bg-zinc-800 px-1 py-0.2 rounded font-mono text-zinc-500">
+                Ctrl+O
+              </kbd>
+            </button>
+          )}
 
           {/* 1-Click External Synapse Graph Button */}
-          <button
-            onClick={handleOpenSynapseGraph}
-            className="flex items-center gap-1.5 px-2.5 py-1 bg-purple-950/40 hover:bg-purple-900/50 border border-purple-800/40 rounded-md text-purple-300 font-medium transition-colors"
-            title="Launch Synapse Graph Visualizer (Ctrl+G)"
-          >
-            <Sparkles className="w-3 h-3 text-purple-400" />
-            <span>Synapse Graph</span>
-          </button>
+          {settings.corePlugins?.graph !== false && (
+            <button
+              onClick={handleOpenSynapseGraph}
+              className="flex items-center gap-1.5 px-2.5 py-1 bg-[#7aa2f7]/15 hover:bg-[#7aa2f7]/25 border border-[#7aa2f7]/30 rounded-md text-[#7aa2f7] font-medium transition-colors"
+              title="Launch Synapse Graph Visualizer (Ctrl+G)"
+            >
+              <Sparkles className="w-3 h-3 text-[#7aa2f7]" />
+              <span>Synapse Graph</span>
+            </button>
+          )}
 
           {/* 1-Click Browser View Button */}
-          <button
-            onClick={() => openBrowserTab()}
-            className="flex items-center gap-1.5 px-2.5 py-1 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-md text-zinc-300 font-medium transition-colors"
-            title="Open Web Browser View"
-          >
-            <Globe className="w-3 h-3 text-zinc-400" />
-            <span>Browser View</span>
-          </button>
+          {settings.corePlugins?.browser !== false && (
+            <button
+              onClick={() => openBrowserTab()}
+              className="flex items-center gap-1.5 px-2.5 py-1 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-md text-zinc-300 font-medium transition-colors"
+              title="Open Web Browser View"
+            >
+              <Globe className="w-3 h-3 text-zinc-400" />
+              <span>Browser View</span>
+            </button>
+          )}
         </div>
 
         <div className="flex items-center gap-1.5">
@@ -801,7 +841,7 @@ export const App: React.FC = () => {
             <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-zinc-500">
               <Sparkles className="w-12 h-12 text-purple-500/40 mb-3 animate-pulse" />
               <h2 className="text-zinc-300 font-semibold text-base mb-1">
-                No note open in Second Brain
+                No note open in Synapse
               </h2>
               <p className="text-xs text-zinc-500 max-w-sm mb-6">
                 Open a note from the File Explorer, create a new thought, or explore connections in Synapse Graph!
@@ -842,6 +882,7 @@ export const App: React.FC = () => {
             onNavigateToNote={handleNavigateWikilink}
             onOpenSynapseGraph={handleOpenSynapseGraph}
             onClose={() => setShowRightSidebar(false)}
+            settings={settings}
           />
         )}
       </div>
@@ -871,20 +912,23 @@ export const App: React.FC = () => {
             </strong>
           </span>
 
-          <span className="text-zinc-700">•</span>
-
-          <button
-            onClick={handleOpenSynapseGraph}
-            className="flex items-center gap-1 text-purple-400 hover:text-purple-300 font-medium transition-colors"
-            title="Open Synapse Graph in external window"
-          >
-            <Sparkles className="w-3 h-3" />
-            <span>Launch Synapse Graph</span>
-          </button>
+          {settings.corePlugins?.graph !== false && (
+            <>
+              <span className="text-zinc-700">•</span>
+              <button
+                onClick={handleOpenSynapseGraph}
+                className="flex items-center gap-1 text-[#7aa2f7] hover:text-[#7dcfff] font-medium transition-colors"
+                title="Open Synapse Graph in external window"
+              >
+                <Sparkles className="w-3 h-3" />
+                <span>Launch Synapse Graph</span>
+              </button>
+            </>
+          )}
         </div>
 
         <div className="flex items-center gap-3">
-          {activeTab && activeTab.path.endsWith('.md') && (
+          {settings.corePlugins?.wordCount !== false && activeTab && activeTab.path.endsWith('.md') && (
             <>
               <span>{stats.words} words</span>
               <span>{stats.chars} characters</span>
@@ -892,10 +936,36 @@ export const App: React.FC = () => {
               <span className="text-zinc-700">•</span>
             </>
           )}
-          <span className="text-emerald-400 font-semibold text-[10px] flex items-center gap-1">
-            <Languages className="w-3 h-3" />
-            <span>ARABIC RTL READY</span>
-          </span>
+          <button
+            onClick={() => {
+              const modes: ('auto' | 'rtl' | 'ltr')[] = ['auto', 'rtl', 'ltr'];
+              const current = settings.rtlMode || 'auto';
+              const nextIndex = (modes.indexOf(current) + 1) % modes.length;
+              const nextMode = modes[nextIndex];
+              const updated = { ...settings, rtlMode: nextMode };
+              setSettings(updated);
+              localStorage.setItem('synapse_settings', JSON.stringify(updated));
+            }}
+            className="flex items-center gap-1.5 px-2 py-0.5 rounded hover:bg-zinc-800 transition-colors cursor-pointer text-[10px] font-semibold"
+            title={`Text Direction: ${settings.rtlMode || 'auto'} (Click to cycle Auto / RTL / LTR)`}
+          >
+            <Languages className="w-3 h-3 text-emerald-400" />
+            <span
+              className={
+                settings.rtlMode === 'rtl'
+                  ? 'text-emerald-400 font-bold'
+                  : settings.rtlMode === 'ltr'
+                  ? 'text-blue-400'
+                  : 'text-zinc-400'
+              }
+            >
+              {settings.rtlMode === 'rtl'
+                ? 'RTL ACTIVE'
+                : settings.rtlMode === 'ltr'
+                ? 'LTR (EN)'
+                : 'RTL (AUTO)'}
+            </span>
+          </button>
           <span className="text-purple-400 uppercase font-semibold text-[10px]">
             {activeTab?.viewMode || 'READY'}
           </span>
@@ -908,6 +978,7 @@ export const App: React.FC = () => {
           settings={settings}
           onSaveSettings={(newSettings) => {
             setSettings(newSettings);
+            localStorage.setItem('synapse_settings', JSON.stringify(newSettings));
             if (newSettings.vaultPath !== settings.vaultPath) {
               refreshVault(newSettings.vaultPath);
             }

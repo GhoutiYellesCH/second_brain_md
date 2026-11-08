@@ -24,6 +24,7 @@ import {
   CaseSensitive,
   WholeWord,
   Regex,
+  Languages,
 } from 'lucide-react';
 
 interface SynapseEditorProps {
@@ -71,6 +72,7 @@ export const SynapseEditor: React.FC<SynapseEditorProps> = ({
   const [wholeWord, setWholeWord] = useState(false);
   const [useRegex, setUseRegex] = useState(false);
   const [matchCount, setMatchCount] = useState({ current: 0, total: 0 });
+  const [overrideRtl, setOverrideRtl] = useState<boolean | null>(null);
 
   // Detect file kind (Code vs Markdown)
   const isCodeFile = useMemo(() => {
@@ -125,12 +127,13 @@ export const SynapseEditor: React.FC<SynapseEditorProps> = ({
     }, 350);
   };
 
-  // Detect RTL / Arabic
+  // Detect RTL / Arabic with per-note override support
   const isContentRtl = useMemo(() => {
+    if (overrideRtl !== null) return overrideRtl;
     if (settings.rtlMode === 'rtl') return true;
     if (settings.rtlMode === 'ltr') return false;
     return isArabicOrRtlText(localText);
-  }, [localText, settings.rtlMode]);
+  }, [localText, settings.rtlMode, overrideRtl]);
 
   // Parse markdown
   const parsed = useMemo(() => {
@@ -442,8 +445,21 @@ export const SynapseEditor: React.FC<SynapseEditorProps> = ({
           )}
         </div>
 
-        {/* Right Action Controls: Find, View Mode toggles, Save */}
+        {/* Right Action Controls: RTL, Find, View Mode toggles, Save */}
         <div className="flex items-center gap-1.5">
+          <button
+            onClick={() => setOverrideRtl((prev) => (prev === null ? !isContentRtl : !prev))}
+            className={`px-2 py-0.5 rounded text-[11px] font-semibold flex items-center gap-1 transition-colors ${
+              isContentRtl
+                ? 'bg-[#7aa2f7]/20 text-[#7aa2f7] border border-[#7aa2f7]/40'
+                : 'text-[#787c99] hover:bg-[#24283b] hover:text-[#c0caf5]'
+            }`}
+            title={isContentRtl ? 'Switch to Left-to-Right (LTR)' : 'Switch to Right-to-Left (RTL)'}
+          >
+            <Languages className="w-3.5 h-3.5" />
+            <span>{isContentRtl ? 'RTL' : 'LTR'}</span>
+          </button>
+
           <button
             onClick={() => setShowFind(!showFind)}
             className={`p-1.5 rounded transition-colors ${
@@ -604,11 +620,15 @@ export const SynapseEditor: React.FC<SynapseEditorProps> = ({
               value={localText}
               onChange={handleTextareaChange}
               onScroll={handleScroll}
+              dir={isContentRtl ? 'rtl' : 'ltr'}
               style={{
                 fontSize: `${settings.fontSize || 15}px`,
                 lineHeight: 1.6,
-                fontFamily: "'JetBrains Mono', 'Fira Code', Menlo, monospace",
+                fontFamily: isContentRtl
+                  ? "'Noto Sans Arabic', 'Cairo', 'Amiri', 'JetBrains Mono', Menlo, monospace"
+                  : "'JetBrains Mono', 'Fira Code', Menlo, monospace",
                 direction: isContentRtl ? 'rtl' : 'ltr',
+                textAlign: isContentRtl ? 'right' : 'left',
                 tabSize: settings.tabSize || 2,
               }}
               spellCheck={false}
@@ -622,13 +642,21 @@ export const SynapseEditor: React.FC<SynapseEditorProps> = ({
           <div className="w-[1px] bg-[#24283b] shrink-0" />
         )}
 
-        {/* Live Preview Area */}
+        {/* Live Preview Area with RTL support */}
         {(viewMode === 'reading' || viewMode === 'split' || viewMode === 'live') && !isCodeFile && (
           <div
             ref={previewRef}
             onClick={handlePreviewClick}
-            style={{ fontSize: `${settings.fontSize || 15}px`, lineHeight: 1.7 }}
-            className="flex-1 h-full overflow-y-auto p-8 bg-[#1a1b26] text-[#c0caf5] prose prose-invert max-w-none selection:bg-[#3d59a1]/50"
+            dir={isContentRtl ? 'rtl' : 'ltr'}
+            style={{
+              fontSize: `${settings.fontSize || 15}px`,
+              lineHeight: 1.7,
+              direction: isContentRtl ? 'rtl' : 'ltr',
+              textAlign: isContentRtl ? 'right' : 'left',
+            }}
+            className={`flex-1 h-full overflow-y-auto p-8 bg-[#1a1b26] text-[#c0caf5] prose prose-invert max-w-none selection:bg-[#3d59a1]/50 ${
+              isContentRtl ? 'rtl-preview text-right' : 'text-left'
+            }`}
             dangerouslySetInnerHTML={{ __html: parsed.html }}
           />
         )}

@@ -46,8 +46,9 @@ export interface ParsedMarkdownResult {
 
 export function isArabicOrRtlText(text: string): boolean {
   if (!text) return false;
-  const arabicRegex = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/;
-  return arabicRegex.test(text);
+  // Unicode ranges for RTL scripts: Arabic, Hebrew, Persian, Urdu, Syriac, Thaana
+  const rtlRegex = /[\u0590-\u05FF\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF\u0700-\u074F\u0780-\u07BF]/;
+  return rtlRegex.test(text);
 }
 
 export function extractTags(markdown: string): string[] {
@@ -221,15 +222,23 @@ export function parseMarkdown(
     return `<a class="synapse-wikilink wikilink text-[#7aa2f7] hover:text-[#7dcfff] underline underline-offset-4 decoration-[#7aa2f7]/50 hover:decoration-[#7dcfff] cursor-pointer font-medium" data-wikilink="${target}" data-target="${target}">${alias}</a>`;
   });
 
-  // 5. Callouts > [!NOTE], > [!TIP], > [!WARNING], > [!IMPORTANT]
-  processed = processed.replace(/^>\s*\[!([A-Z]+)\]\s*(.*)$/gim, (_, type, title) => {
+  // 5. Callouts > [!NOTE] Title
+  processed = processed.replace(/^>\s*\[!([A-Z]+)\]\s*([^\n]*)(?:\n((?:>[^\n]*(?:\n|$))*))?/gim, (_, type, title, body) => {
     const t = type.toUpperCase();
     let border = 'border-[#7aa2f7] bg-[#7aa2f7]/10 text-[#7aa2f7]';
     if (t === 'WARNING' || t === 'CAUTION') border = 'border-[#f7768e] bg-[#f7768e]/10 text-[#f7768e]';
     if (t === 'TIP' || t === 'SUCCESS') border = 'border-[#73daca] bg-[#73daca]/10 text-[#73daca]';
     if (t === 'IMPORTANT') border = 'border-[#bb9af7] bg-[#bb9af7]/10 text-[#bb9af7]';
 
-    return `<div class="callout my-3 p-3.5 rounded-lg border-l-4 ${border}"><div class="font-semibold text-sm mb-1 uppercase tracking-wider flex items-center gap-1.5">${t}: ${title || t}</div><div class="callout-content text-sm text-[#c0caf5]">`;
+    const cleanBody = (body || '')
+      .split('\n')
+      .map((line: string) => line.replace(/^>\s?/, ''))
+      .join('\n');
+
+    return `<div class="callout my-3 p-3.5 rounded-lg border-l-4 rtl:border-l-0 rtl:border-r-4 ${border}">
+      <div class="font-semibold text-sm mb-1 uppercase tracking-wider flex items-center gap-1.5">${t}${title ? `: ${title}` : ''}</div>
+      <div class="callout-content text-sm text-[#c0caf5]">\n\n${cleanBody}\n\n</div>
+    </div>\n\n`;
   });
 
   // Marked parse

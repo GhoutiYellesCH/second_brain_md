@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { FileItem, SearchResult, VaultSettings } from '../types';
 import {
   Folder,
@@ -20,6 +20,8 @@ import {
   Settings,
   Layers,
   Sparkles,
+  FoldVertical,
+  UnfoldVertical,
 } from 'lucide-react';
 
 interface LeftSidebarProps {
@@ -69,6 +71,43 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({
     [tree?.path || '']: true,
   });
+
+  // Collect all directories recursively
+  const getAllDirs = useCallback((item: FileItem | null): string[] => {
+    if (!item) return [];
+    let dirs: string[] = [];
+    if (item.is_dir) {
+      dirs.push(item.path);
+      if (item.children) {
+        for (const child of item.children) {
+          dirs = dirs.concat(getAllDirs(child));
+        }
+      }
+    }
+    return dirs;
+  }, []);
+
+  const collapseAllFolders = () => {
+    if (!tree) return;
+    const allDirs = getAllDirs(tree);
+    const next: Record<string, boolean> = { [tree.path]: true };
+    for (const d of allDirs) {
+      if (d !== tree.path) {
+        next[d] = false;
+      }
+    }
+    setExpandedFolders(next);
+  };
+
+  const expandAllFolders = () => {
+    if (!tree) return;
+    const allDirs = getAllDirs(tree);
+    const next: Record<string, boolean> = {};
+    for (const d of allDirs) {
+      next[d] = true;
+    }
+    setExpandedFolders(next);
+  };
 
   const toggleFolder = (path: string) => {
     setExpandedFolders((prev) => ({
@@ -237,31 +276,49 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
           >
             <Search className="w-3.5 h-3.5" />
           </button>
-          <button
-            onClick={() => setActiveTab('tags')}
-            className={`p-1.5 rounded transition-colors ${
-              activeTab === 'tags'
-                ? 'bg-purple-600 text-white'
-                : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
-            }`}
-            title="Tags Explorer"
-          >
-            <Hash className="w-3.5 h-3.5" />
-          </button>
-          <button
-            onClick={() => setActiveTab('bookmarks')}
-            className={`p-1.5 rounded transition-colors ${
-              activeTab === 'bookmarks'
-                ? 'bg-purple-600 text-white'
-                : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
-            }`}
-            title="Starred Notes"
-          >
-            <Star className="w-3.5 h-3.5" />
-          </button>
+          {settings.corePlugins?.tags !== false && (
+            <button
+              onClick={() => setActiveTab('tags')}
+              className={`p-1.5 rounded transition-colors ${
+                activeTab === 'tags'
+                  ? 'bg-[#7aa2f7] text-[#16161e]'
+                  : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
+              }`}
+              title="Tags Explorer"
+            >
+              <Hash className="w-3.5 h-3.5" />
+            </button>
+          )}
+          {settings.corePlugins?.bookmarks !== false && (
+            <button
+              onClick={() => setActiveTab('bookmarks')}
+              className={`p-1.5 rounded transition-colors ${
+                activeTab === 'bookmarks'
+                  ? 'bg-[#7aa2f7] text-[#16161e]'
+                  : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
+              }`}
+              title="Starred Notes"
+            >
+              <Star className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
 
         <div className="flex items-center gap-1">
+          <button
+            onClick={collapseAllFolders}
+            className="p-1.5 rounded text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors"
+            title="Collapse all folders"
+          >
+            <FoldVertical className="w-3.5 h-3.5" />
+          </button>
+          <button
+            onClick={expandAllFolders}
+            className="p-1.5 rounded text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors"
+            title="Expand all folders"
+          >
+            <UnfoldVertical className="w-3.5 h-3.5" />
+          </button>
           <button
             onClick={onPickVaultFolder}
             className="p-1.5 rounded text-blue-400 hover:text-blue-300 hover:bg-zinc-800 transition-colors"
@@ -269,13 +326,15 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
           >
             <FolderOpen className="w-3.5 h-3.5" />
           </button>
-          <button
-            onClick={onOpenSynapseGraph}
-            className="p-1.5 rounded text-purple-400 hover:text-purple-300 hover:bg-zinc-800 transition-colors"
-            title="Open Synapse Graph in External Window"
-          >
-            <Sparkles className="w-3.5 h-3.5" />
-          </button>
+          {settings.corePlugins?.graph !== false && (
+            <button
+              onClick={onOpenSynapseGraph}
+              className="p-1.5 rounded text-[#7aa2f7] hover:text-[#7dcfff] hover:bg-zinc-800 transition-colors"
+              title="Open Synapse Graph in External Window"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+            </button>
+          )}
           <button
             onClick={() => onCreateFile(tree?.path || '')}
             className="p-1.5 rounded text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors"

@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 #[tauri::command]
 pub fn get_default_vault_path() -> Result<String, String> {
-    let local_help = PathBuf::from("obsidian_help_vault");
+    let local_help = PathBuf::from("synapse_help_vault");
     if local_help.exists() && local_help.is_dir() {
         if let Ok(abs) = fs::canonicalize(&local_help) {
             return Ok(abs.to_string_lossy().to_string());

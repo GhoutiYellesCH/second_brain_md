@@ -11,13 +11,33 @@ export interface FileItem {
   children?: FileItem[];
 }
 
+export interface CorePluginConfig {
+  graph: boolean;
+  canvas: boolean;
+  slides: boolean;
+  quickSwitcher: boolean;
+  commandPalette: boolean;
+  templates: boolean;
+  bookmarks: boolean;
+  tags: boolean;
+  recovery: boolean;
+  outline: boolean;
+  wordCount: boolean;
+  wikilinks: boolean;
+  browser: boolean;
+  [key: string]: boolean;
+}
+
 export interface VaultSettings {
   vaultPath: string;
   assetsMode: 'designated' | 'subfolder' | 'root' | 'same-folder';
   designatedFolder: string;
   defaultViewMode: 'edit' | 'split' | 'preview' | 'live' | 'source' | 'reading';
   rtlMode?: 'auto' | 'rtl' | 'ltr';
-  theme: 'tokyo-night' | 'tokyo-night-storm' | 'tokyo-night-light' | 'dark' | 'light';
+  theme: 'tokyo-night' | 'tokyo-night-storm' | 'tokyo-night-light' | 'dark' | 'light' | 'nord' | 'dracula' | 'cyberpunk' | string;
+  baseColor?: 'dark' | 'light' | 'tokyo-night';
+  accentColor?: string;
+  corePlugins?: CorePluginConfig;
   fontSize: number;
   fontFamily?: string;
   tabSize?: number;

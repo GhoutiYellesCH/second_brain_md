@@ -3,7 +3,7 @@ import path from 'node:path';
 
 const CACHE_URL = 'https://publish-01.obsidian.md/cache/f786db9fac45774fa4f0d8112e232d67';
 const ACCESS_BASE = 'https://publish-01.obsidian.md/access/f786db9fac45774fa4f0d8112e232d67';
-const TARGET_DIR = path.resolve(process.cwd(), 'obsidian_help_vault');
+const TARGET_DIR = path.resolve(process.cwd(), 'synapse_help_vault');
 
 async function main() {
   console.log('📡 Fetching Obsidian Help manifest from Publish cache...');

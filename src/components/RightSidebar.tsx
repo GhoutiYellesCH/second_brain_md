@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { NoteBacklinks, HeadingItem } from '../types';
+import { NoteBacklinks, HeadingItem, VaultSettings } from '../types';
 import { Sparkles, Link2, ListTree, ChevronRight, ArrowUpRight, ExternalLink } from 'lucide-react';
 
 interface RightSidebarProps {
@@ -11,6 +11,7 @@ interface RightSidebarProps {
   onHeadingClick?: (heading: HeadingItem) => void;
   onOpenSynapseGraph: () => void;
   onClose?: () => void;
+  settings?: VaultSettings;
 }
 
 export const RightSidebar: React.FC<RightSidebarProps> = ({
@@ -21,48 +22,57 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   onHeadingClick,
   onOpenSynapseGraph,
   onClose,
+  settings,
 }) => {
-  const [activeTab, setActiveTab] = useState<'backlinks' | 'outline'>('backlinks');
+  const showLinks = settings?.corePlugins?.wikilinks !== false;
+  const showOutline = settings?.corePlugins?.outline !== false;
+  const [activeTab, setActiveTab] = useState<'backlinks' | 'outline'>(showLinks ? 'backlinks' : 'outline');
 
   return (
     <div className="flex flex-col h-full bg-[#121214] border-l border-zinc-800/80 w-72 select-none">
       {/* Right Sidebar Tab Bar */}
       <div className="flex items-center justify-between px-2 py-1.5 border-b border-zinc-800 bg-[#161619] shrink-0 text-xs">
         <div className="flex items-center gap-1">
-          <button
-            onClick={() => setActiveTab('backlinks')}
-            className={`flex items-center gap-1 px-2.5 py-1 rounded transition-colors ${
-              activeTab === 'backlinks'
-                ? 'bg-purple-600 text-white font-medium shadow'
-                : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
-            }`}
-            title="Backlinks & Outgoing Links"
-          >
-            <Link2 className="w-3.5 h-3.5" />
-            <span>Links</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('outline')}
-            className={`flex items-center gap-1 px-2.5 py-1 rounded transition-colors ${
-              activeTab === 'outline'
-                ? 'bg-purple-600 text-white font-medium shadow'
-                : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
-            }`}
-            title="Note Table of Contents"
-          >
-            <ListTree className="w-3.5 h-3.5" />
-            <span>Outline</span>
-          </button>
+          {showLinks && (
+            <button
+              onClick={() => setActiveTab('backlinks')}
+              className={`flex items-center gap-1 px-2.5 py-1 rounded transition-colors ${
+                activeTab === 'backlinks'
+                  ? 'bg-[#7aa2f7] text-[#16161e] font-semibold shadow'
+                  : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
+              }`}
+              title="Backlinks & Outgoing Links"
+            >
+              <Link2 className="w-3.5 h-3.5" />
+              <span>Links</span>
+            </button>
+          )}
+          {showOutline && (
+            <button
+              onClick={() => setActiveTab('outline')}
+              className={`flex items-center gap-1 px-2.5 py-1 rounded transition-colors ${
+                activeTab === 'outline'
+                  ? 'bg-[#7aa2f7] text-[#16161e] font-semibold shadow'
+                  : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
+              }`}
+              title="Note Table of Contents"
+            >
+              <ListTree className="w-3.5 h-3.5" />
+              <span>Outline</span>
+            </button>
+          )}
         </div>
 
         <div className="flex items-center gap-1">
-          <button
-            onClick={onOpenSynapseGraph}
-            className="p-1.5 hover:bg-purple-950/40 text-purple-400 hover:text-purple-300 rounded border border-purple-800/40 transition-colors"
-            title="Launch Synapse Graph Visualizer"
-          >
-            <Sparkles className="w-3.5 h-3.5" />
-          </button>
+          {settings?.corePlugins?.graph !== false && (
+            <button
+              onClick={onOpenSynapseGraph}
+              className="p-1 rounded text-[#7aa2f7] hover:text-[#7dcfff] hover:bg-zinc-800 transition-colors"
+              title="Open Synapse Graph in external window"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+            </button>
+          )}
 
           {onClose && (
             <button

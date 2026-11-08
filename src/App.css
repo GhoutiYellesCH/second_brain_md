@@ -195,3 +195,124 @@ body {
   border-top: 1px solid #24283b;
   margin: 2rem 0;
 }
+
+/* RTL Markdown Preview & Typography */
+.rtl-preview,
+[dir="rtl"] {
+  direction: rtl;
+  text-align: right;
+  font-family: 'Noto Sans Arabic', 'Cairo', 'Amiri', var(--font-sans);
+}
+
+.rtl-preview th,
+.rtl-preview td,
+[dir="rtl"] th,
+[dir="rtl"] td {
+  text-align: right;
+}
+
+.rtl-preview ul,
+.rtl-preview ol,
+[dir="rtl"] ul,
+[dir="rtl"] ol {
+  padding-left: 0;
+  padding-right: 1.5rem;
+}
+
+.rtl-preview blockquote,
+[dir="rtl"] blockquote {
+  border-left: none;
+  border-right: 4px solid var(--accent-blue, #7aa2f7);
+  padding-left: 0;
+  padding-right: 1rem;
+}
+
+.rtl-preview .callout,
+[dir="rtl"] .callout {
+  border-left: none !important;
+  border-right-width: 4px !important;
+  border-right-style: solid !important;
+}
+
+/* Theme definitions */
+[data-theme="tokyo-night"] {
+  --bg-primary: #16161e;
+  --bg-secondary: #1a1b26;
+  --bg-card: #1f2335;
+  --border-color: #24283b;
+  --accent-blue: #7aa2f7;
+  --text-primary: #c0caf5;
+  --text-muted: #565f89;
+}
+
+[data-theme="tokyo-night-storm"] {
+  --bg-primary: #1f2335;
+  --bg-secondary: #24283b;
+  --bg-card: #292e42;
+  --border-color: #3b4261;
+  --accent-blue: #7aa2f7;
+  --text-primary: #c0caf5;
+  --text-muted: #787c99;
+}
+
+[data-theme="tokyo-night-light"] {
+  color-scheme: light;
+  --bg-primary: #e1e2e7;
+  --bg-secondary: #d5d6db;
+  --bg-card: #cfc9c2;
+  --border-color: #b4b5b9;
+  --accent-blue: #34548a;
+  --text-primary: #343b58;
+  --text-muted: #565a6e;
+}
+
+[data-theme="dark"] {
+  --bg-primary: #121214;
+  --bg-secondary: #18181c;
+  --bg-card: #202024;
+  --border-color: #2a2a30;
+  --accent-blue: #7aa2f7;
+  --text-primary: #e4e4e7;
+  --text-muted: #71717a;
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+  --bg-primary: #ffffff;
+  --bg-secondary: #f4f4f5;
+  --bg-card: #e4e4e7;
+  --border-color: #d4d4d8;
+  --accent-blue: #2563eb;
+  --text-primary: #18181b;
+  --text-muted: #71717a;
+}
+
+[data-theme="nord"] {
+  --bg-primary: #242933;
+  --bg-secondary: #2e3440;
+  --bg-card: #3b4252;
+  --border-color: #434c5e;
+  --accent-blue: #88c0d0;
+  --text-primary: #eceff4;
+  --text-muted: #7b88a1;
+}
+
+[data-theme="dracula"] {
+  --bg-primary: #1e1f29;
+  --bg-secondary: #282a36;
+  --bg-card: #343746;
+  --border-color: #44475a;
+  --accent-blue: #bd93f9;
+  --text-primary: #f8f8f2;
+  --text-muted: #6272a4;
+}
+
+[data-theme="cyberpunk"] {
+  --bg-primary: #0b0e14;
+  --bg-secondary: #131721;
+  --bg-card: #1b2030;
+  --border-color: #ff007f;
+  --accent-blue: #00f0ff;
+  --text-primary: #e6e6e6;
+  --text-muted: #707a8a;
+}
