@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <radialGradient id="bgGrad" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#1f2335" />
+      <stop offset="100%" stop-color="#16161e" />
+    </radialGradient>
+    <linearGradient id="synapseGrad1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#7aa2f7" />
+      <stop offset="50%" stop-color="#bb9af7" />
+      <stop offset="100%" stop-color="#7dcfff" />
+    </linearGradient>
+    <linearGradient id="synapseGrad2" x1="100%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#73daca" />
+      <stop offset="100%" stop-color="#7aa2f7" />
+    </linearGradient>
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="12" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+
+  <!-- Background rounded squircle -->
+  <rect width="512" height="512" rx="112" fill="url(#bgGrad)" stroke="#414868" stroke-width="4" />
+
+  <!-- Neural Connection Synapse Web Background -->
+  <g opacity="0.22" stroke="#7aa2f7" stroke-width="2" stroke-dasharray="4,4">
+    <line x1="120" y1="140" x2="256" y2="256" />
+    <line x1="392" y1="140" x2="256" y2="256" />
+    <line x1="120" y1="372" x2="256" y2="256" />
+    <line x1="392" y1="372" x2="256" y2="256" />
+    <line x1="70" y1="256" x2="256" y2="256" />
+    <line x1="442" y1="256" x2="256" y2="256" />
+  </g>
+
+  <!-- Glowing Neural Axons / Synapses Path -->
+  <g filter="url(#glow)">
+    <!-- Synaptic 'S' Curve -->
+    <path d="M 360 150 C 330 110, 210 100, 180 180 C 150 250, 360 260, 332 340 C 310 400, 200 410, 152 360" 
+          fill="none" stroke="url(#synapseGrad1)" stroke-width="26" stroke-linecap="round" />
+    
+    <!-- Cross Neural Link -->
+    <path d="M 160 170 C 230 200, 280 300, 350 340" 
+          fill="none" stroke="url(#synapseGrad2)" stroke-width="14" stroke-linecap="round" opacity="0.85" />
+  </g>
+
+  <!-- Synapse Nodes (Neurons) -->
+  <!-- Top Right Node -->
+  <circle cx="360" cy="150" r="24" fill="#7dcfff" filter="url(#glow)" />
+  <circle cx="360" cy="150" r="12" fill="#ffffff" />
+
+  <!-- Upper Left Node -->
+  <circle cx="180" cy="180" r="22" fill="#bb9af7" filter="url(#glow)" />
+  <circle cx="180" cy="180" r="10" fill="#ffffff" />
+
+  <!-- Central Nucleus Node -->
+  <circle cx="256" cy="256" r="28" fill="#7aa2f7" filter="url(#glow)" />
+  <circle cx="256" cy="256" r="14" fill="#ffffff" />
+
+  <!-- Lower Right Node -->
+  <circle cx="332" cy="340" r="22" fill="#73daca" filter="url(#glow)" />
+  <circle cx="332" cy="340" r="10" fill="#ffffff" />
+
+  <!-- Lower Left Node -->
+  <circle cx="152" cy="360" r="24" fill="#ff9e64" filter="url(#glow)" />
+  <circle cx="152" cy="360" r="12" fill="#ffffff" />
+
+  <!-- Satellite Micro Nodes -->
+  <circle cx="110" cy="130" r="8" fill="#7dcfff" opacity="0.75" />
+  <circle cx="402" cy="130" r="8" fill="#bb9af7" opacity="0.75" />
+  <circle cx="100" cy="380" r="8" fill="#73daca" opacity="0.75" />
+  <circle cx="412" cy="370" r="8" fill="#7aa2f7" opacity="0.75" />
+</svg>
