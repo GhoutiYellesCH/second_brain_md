@@ -1,8 +1,10 @@
 export interface FileItem {
   name: string;
   path: string;
-  relativePath: string;
-  isDir: boolean;
+  relativePath?: string;
+  relative_path?: string;
+  isDir?: boolean;
+  is_dir?: boolean;
   size: number;
   modified: number;
   extension: string;
@@ -11,34 +13,41 @@ export interface FileItem {
 
 export interface VaultSettings {
   vaultPath: string;
-  assetsMode: 'designated' | 'subfolder' | 'root';
+  assetsMode: 'designated' | 'subfolder' | 'root' | 'same-folder';
   designatedFolder: string;
-  defaultViewMode: 'edit' | 'split' | 'preview';
-  theme: 'tokyo-night' | 'tokyo-night-storm' | 'tokyo-night-light';
+  defaultViewMode: 'edit' | 'split' | 'preview' | 'live' | 'source' | 'reading';
+  rtlMode?: 'auto' | 'rtl' | 'ltr';
+  theme: 'tokyo-night' | 'tokyo-night-storm' | 'tokyo-night-light' | 'dark' | 'light';
   fontSize: number;
-  fontFamily: string;
-  tabSize: number;
-  wordWrap: boolean;
-  lineNumbers: boolean;
-  autoSave: boolean;
-  autoSaveDelay: number;
+  fontFamily?: string;
+  tabSize?: number;
+  wordWrap?: boolean;
+  lineNumbers?: boolean;
+  autoSave?: boolean;
+  autoSaveDelay?: number;
 }
 
 export interface VaultStats {
-  totalNotes: number;
-  totalAssets: number;
-  totalSizeBytes: number;
+  totalNotes?: number;
+  total_notes?: number;
+  totalAssets?: number;
+  total_assets?: number;
+  totalSizeBytes?: number;
+  total_size_bytes?: number;
 }
 
 export interface SearchResult {
   path: string;
-  relativePath: string;
+  relativePath?: string;
+  relative_path?: string;
   title: string;
-  lineNumber: number;
+  lineNumber?: number;
+  line_number?: number;
   snippet: string;
 }
 
 export interface HeadingItem {
+  id?: string;
   level: number;
   text: string;
   line: number;

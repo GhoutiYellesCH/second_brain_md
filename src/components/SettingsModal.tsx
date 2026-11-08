@@ -168,7 +168,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </div>
                   <div className="p-3 bg-zinc-900/80 border border-zinc-800 rounded-xl text-center">
                     <div className="text-lg font-bold text-emerald-400">
-                      {formatSize(vaultStats.total_size_bytes)}
+                      {formatSize(vaultStats.total_size_bytes || vaultStats.totalSizeBytes || 0)}
                     </div>
                     <div className="text-[11px] text-zinc-400">Storage Used</div>
                   </div>

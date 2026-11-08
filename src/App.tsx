@@ -234,7 +234,7 @@ export const App: React.FC = () => {
         list.push({
           path: item.path,
           title: item.name.replace(/\.md$/, ''),
-          relativePath: item.relative_path,
+          relativePath: item.relative_path || item.relativePath || '',
         });
       }
     };
