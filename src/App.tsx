@@ -13,7 +13,7 @@ import { vaultApi } from './services/vaultApi';
 import { extractWikilinks, extractTags } from './services/markdownParser';
 import { LeftSidebar } from './components/LeftSidebar';
 import { RightSidebar } from './components/RightSidebar';
-import { ObsidianEditor } from './components/ObsidianEditor';
+import { SynapseEditor } from './components/SynapseEditor';
 import { AssetViewer } from './components/AssetViewer';
 import { BrowserView } from './components/BrowserView';
 import { SettingsModal } from './components/SettingsModal';
@@ -342,7 +342,7 @@ export const App: React.FC = () => {
         path: 'browser://view',
         title: '🌐 Browser',
         viewMode: 'browser',
-        browserUrl: url || 'https://en.wikipedia.org/wiki/Obsidian_(software)',
+        browserUrl: url || 'https://en.wikipedia.org/wiki/Second_brain',
       };
       setTabs((prev) => [...prev, newTab]);
       setActiveTabId(newTab.id);
@@ -439,7 +439,7 @@ export const App: React.FC = () => {
     }
   };
 
-  // Handle note content change & auto-save (debounced by ObsidianEditor)
+  // Handle note content change & auto-save (debounced by SynapseEditor)
   const handleContentChange = useCallback((newContent: string) => {
     setActiveFileContent(newContent);
     if (activeTab && activeTab.path.endsWith('.md')) {
@@ -780,7 +780,7 @@ export const App: React.FC = () => {
               {/* Tab Mode: Markdown Editor Modes (Live, Reading, Source, Split) */}
               {activeTab.viewMode !== 'browser' &&
                 activeTab.viewMode !== 'asset' && (
-                  <ObsidianEditor
+                  <SynapseEditor
                     content={activeFileContent}
                     onChange={handleContentChange}
                     filePath={activeTab.path}

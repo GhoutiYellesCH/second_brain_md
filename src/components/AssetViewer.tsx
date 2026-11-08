@@ -87,7 +87,7 @@ export const AssetViewer: React.FC<AssetViewerProps> = ({
           <button
             onClick={handleCopyLink}
             className="flex items-center gap-1 px-2.5 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded font-medium transition-colors"
-            title="Copy Obsidian Wikilink"
+            title="Copy Wikilink"
           >
             {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
             <span>{copied ? 'Copied Wikilink' : 'Copy Link'}</span>
@@ -157,7 +157,7 @@ export const AssetViewer: React.FC<AssetViewerProps> = ({
               onClick={handleCopyLink}
               className="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 text-white rounded text-xs font-medium"
             >
-              Copy Obsidian Embed: {wikilink}
+              Copy Embed: {wikilink}
             </button>
           </div>
         )}

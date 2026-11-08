@@ -130,7 +130,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <div>
                   <h3 className="text-sm font-semibold text-zinc-100 mb-1">Vault Directory</h3>
                   <p className="text-zinc-400 text-xs">
-                    Choose any folder on your computer to open as an Obsidian markdown vault.
+                    Choose any folder on your computer to open as an Synapse markdown vault.
                   </p>
                 </div>
 
@@ -174,14 +174,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </div>
                 </div>
 
-                {/* Load Official Obsidian Help Vault */}
+                {/* Load Synapse Help Vault */}
                 <div className="pt-2 border-t border-zinc-800/80 flex items-center justify-between">
                   <div>
                     <h4 className="font-semibold text-zinc-200 text-xs flex items-center gap-1.5">
-                      <span className="text-purple-400">💎</span> Official Obsidian Help Vault
+                      <span className="text-purple-400">💎</span> Synapse Help Vault
                     </h4>
                     <p className="text-[11px] text-zinc-400">
-                      Extracted directly from obsidian.md/help (179 notes & Attachments).
+                      Extracted directly from synapse help (179 notes & Attachments).
                     </p>
                   </div>
                   <button

@@ -8,7 +8,7 @@ interface BrowserViewProps {
 }
 
 export const BrowserView: React.FC<BrowserViewProps> = ({
-  initialUrl = 'https://en.wikipedia.org/wiki/Obsidian_(software)',
+  initialUrl = 'https://en.wikipedia.org/wiki/Second_brain',
   onUrlChange,
 }) => {
   const [url, setUrl] = useState<string>(initialUrl);
@@ -165,7 +165,7 @@ export const BrowserView: React.FC<BrowserViewProps> = ({
         <iframe
           key={key}
           src={currentUrl}
-          title="Obsidian Browser View"
+          title="Synapse Browser View"
           className="w-full h-full border-none"
           sandbox="allow-same-origin allow-scripts allow-forms allow-popups"
         />

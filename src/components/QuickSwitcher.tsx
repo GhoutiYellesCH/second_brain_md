@@ -147,7 +147,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
             <span>↵ to select</span>
             <span>esc to close</span>
           </div>
-          <span>Obsidian Quick Switcher</span>
+          <span>Synapse Quick Switcher</span>
         </div>
       </div>
     </div>
