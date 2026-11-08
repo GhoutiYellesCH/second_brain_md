@@ -1,89 +1,99 @@
-# Second Brain - Obsidian-Grade Markdown Reader & Synapses Graph (Tauri)
+# Synapse — High-Performance Markdown & Code Workspace (Tauri v2)
 
-An offline-first, native markdown reader and knowledge base built with **Tauri v2**, **Rust**, **React**, and **TypeScript**. Designed as a high-performance replacement for Obsidian vaults with native asset management and an interactive 60fps force-directed **Synapses Knowledge Graph**.
+[![Version](https://img.shields.io/badge/version-1.1.0-blue.svg)](package.json)
+[![Theme](https://img.shields.io/badge/theme-Tokyo%20Night-purple.svg)](src/App.css)
+[![Engine](https://img.shields.io/badge/engine-mdedit%20production-green.svg)](src-tauri/src/)
 
----
-
-## ✨ Features
-
-### 1. 🗂️ Configurable Assets & Attachment Storage
-In Obsidian and Second Brain, you choose where note assets are stored:
-- **Designated Attachments Folder** (e.g. `assets/` or `attachments/` in vault root).
-- **Vault Root Folder** (`/`).
-- **Same Folder as Current Note** (co-located attachments).
-- **Subfolder Under Current Note** (e.g. `./assets/`).
-
-**Drag-and-Drop & Paste**:
-- Drag any image, PDF, audio, or video into the note editor: it is automatically copied into your chosen assets location and linked as `![[filename.ext]]`.
-- Paste screenshots from the clipboard (`Ctrl+V`): automatically saved as timestamped PNGs in your asset directory.
-- Built-in **Asset Reader**: View images with zoom/rotate, play audio/video, and inspect PDFs directly.
-
-### 2. 📝 Complete Obsidian Editor with All Modes
-- **Live Preview Mode**: Inline hybrid editing with live rendered math, callouts, and images.
-- **Reading / Preview Mode**: Distraction-free rendered markdown with interactive checkboxes, clickable wikilinks, and copy-code buttons.
-- **Source Mode**: Raw markdown code editor with monospace typography and line numbers.
-- **Split Mode**: Side-by-side editing on the left and real-time rendered preview on the right.
-- **Browser View Mode**: Built-in web browser tab with URL navigation, address bar, back/forward/refresh, and documentation bookmarks (Wikipedia, MDN, Rust Docs, DuckDuckGo).
-- **Synapses Graph Mode**: 1-click full-screen or tabbed view of the neural knowledge graph.
-
-### 3. ⚡ Synapses Knowledge Graph (Default Way)
-- Notes act as **neurons** and bi-directional wikilinks `[[...]]` act as **synapses**.
-- **Synaptic Pulses**: 60fps canvas particle flow along synapses between connected thoughts.
-- **Dynamic Neuron Sizing**: Nodes with more incoming/outgoing connections expand proportionally.
-- **Hover Neon Glow**: Hovering on a note illuminates its synaptic network and dims unrelated thoughts.
-- **Interactive Controls**: Drag nodes, pan and zoom with mouse wheel, adjust repulsion, link length, and gravity.
-- **Filter & Search**: Instant filter by note title, filter by `#tag`, and toggle orphan notes.
-- **Local Synapses Subgraph**: Collapsible right sidebar showing the active note's immediate neural connections.
-
-### 4. 🔗 Obsidian Compatibility
-- **Bi-directional Wikilinks**: `[[Note Title]]` or `[[Note Title|Custom Label]]`. Clicking navigates to the note (or prompts to create it).
-- **Backlinks & Outgoing Links**: Dedicated panel tracking linked mentions, unlinked mentions, and outgoing synapses.
-- **Table of Contents (Outline)**: Automatic H1–H6 heading outline with 1-click jump to section.
-- **Callouts / Admonitions**: `> [!NOTE]`, `> [!TIP]`, `> [!WARNING]`, `> [!IMPORTANT]`, `> [!DANGER]`, `> [!SUCCESS]`, `> [!QUOTE]`.
-- **LaTeX Math Support**: Inline `$E=mc^2$` and block `$$\int_{-\infty}^\infty e^{-x^2} dx = \sqrt{\pi}$$` via KaTeX.
-- **Code Highlighting**: Syntax highlighting for Rust, TypeScript, JavaScript, Python, Bash, JSON, CSS via PrismJS.
-- **Quick Switcher**: `Ctrl+O` / `Ctrl+P` fuzzy search modal with keyboard navigation (`↑`/`↓`/`Enter`).
-
-### 5. 💎 Official Obsidian Help Vault Extracted
-The entire official Obsidian Help documentation (`https://obsidian.md/help/`) has been extracted directly into:
-```
-obsidian_help_vault/
-```
-- **179 Markdown Notes** covering everything from Basic Formatting, Callouts, Internal Links, Attachments, to Graph View, Canvas, Plugins, and Sync.
-- **141 Vault Attachments & Images** under `obsidian_help_vault/Attachments`.
-- In **Settings → Vault Storage**, click **"Switch to Help Vault"** to instantly open and navigate the official documentation within Second Brain!
-- You can re-run the extraction at any time with:
-  ```bash
-  node scripts/extract_obsidian_help.mjs
-  ```
+**Synapse** is an offline-first, native Markdown and Code workspace engineered with **Tauri v2**, **Rust**, **React**, and **TypeScript**. Powered by the battle-tested **mdedit** engine and styled with a futuristic **Tokyo Night** cyberpunk palette, Synapse seamlessly bridges the gap between deep knowledge management and lightweight, distraction-free code editing.
 
 ---
 
-## 🚀 Running the App
+## ✨ Core Pillars & Capabilities
 
-### Development Mode
+### 1. ⚡ Dual Workflows: Vault & Single-File Modes
+- **Vault Mode**: Full workspace navigation, hierarchical file trees, full-vault fuzzy search, tag indexing, bookmarks, and automated vault statistics.
+- **Single-File Mode (gedit-style)**: Clean, focused editor for standalone files without workspace overhead. Open any file directly from your terminal (`synapse /path/to/document.md` or `synapse /path/to/script.py`).
+- **Code Editor Mode**: Automatically identifies and highlights 40+ programming languages (`.py`, `.rs`, `.js`, `.ts`, `.json`, `.css`, `.sh`, `.c`, `.cpp`, `.go`, `.html`, etc.) with line numbering, monospace typography, tab handling, and syntax highlighting.
+
+### 2. 🛡️ Robust mdedit Production Engine
+- **Atomic Disk Writes**: Fail-safe file writing with atomic staging to guarantee zero data loss.
+- **Automated Crash Recovery**: Dual-timer debounced session caching (`IDLE_DELAY_MS` and `MAXIMUM_DELAY_MS`) with dirty revision tracking and recovery restore.
+- **External Modification Detection**: Real-time file signature validation detects background disk edits and provides conflict resolution dialogs.
+- **Multi-Format Export Engine**: Export cleanly to HTML, Markdown, PDF, and CSV tables with isolated rendering pipelines.
+
+### 3. 🌐 External Synapse Graph Visualizer
+- Rendering large force-directed graphs in the main editor process can cause micro-stutters. Synapse isolates the heavy physics simulation into the external `synapse-graph` binary via native bridge (`open_in_synapse_graph`).
+- Notes serve as neurons, bi-directional wikilinks `[[...]]` act as synapses, and 60fps canvas particles visualize synaptic thought flow outside the editing loop.
+
+### 4. 📝 Rich Markdown & Knowledge Management
+- **Rendering Modes**: Live Preview, Split Mode, Distraction-Free Reading Mode, and Raw Source Mode.
+- **Bi-directional Wikilinks**: Instant note traversal and backlink indexing.
+- **LaTeX Math Support**: Inline `$E=mc^2$` and block `$$\int_{-\infty}^\infty e^{-x^2} dx = \sqrt{\pi}$$` powered by KaTeX.
+- **Interactive Diagrams**: Mermaid graph, sequence, and state diagrams rendered in real time.
+- **Callouts & Admonitions**: GitHub-style callouts (`> [!NOTE]`, `> [!TIP]`, `> [!WARNING]`, `> [!IMPORTANT]`, `> [!CAUTION]`).
+- **Command Palette & Quick Switcher**: `Ctrl+P` / `Ctrl+O` fuzzy switcher for instant document jumping.
+- **Templates**: Dynamic template insertion supporting `{{title}}`, `{{date}}`, `{{time}}`, and `{{uuid}}`.
+- **Canvas & Slides Views**: Visual infinite-board note mapping and presentation slides mode.
+
+---
+
+## 🚀 Getting Started
+
+### Prerequisites
+- Node.js (v18+)
+- Rust & Cargo (1.78+)
+- Linux dependencies: `libwebkit2gtk-4.1-dev`, `build-essential`, `curl`, `wget`, `file`, `libxdo-dev`, `libssl-dev`, `libayatana-appindicator3-dev`, `librsvg2-dev`
+
+### Development
 ```bash
+# Install frontend dependencies
+npm install
+
+# Run desktop application in development mode
 npm run tauri dev
-```
-*(Or run `npm run dev` to test the frontend in your browser with mock vault data)*
 
-### Production Build
+# Run Vite web preview
+npm run dev
+```
+
+### Production Build & Packaging
 ```bash
+# Type check and build frontend
 npm run build
-cd src-tauri && cargo build --release
+
+# Compile release binary and Debian bundle (.deb)
+npm run tauri build -- --bundles deb
 ```
-The compiled native executable will be located at:
-```bash
-src-tauri/target/release/tauri-app
-```
-*(Debug binary already built at `src-tauri/target/debug/tauri-app`)*
+
+The output artifacts will be created at:
+- **Binary**: `src-tauri/target/release/synapse`
+- **Debian Package**: `src-tauri/target/release/bundle/deb/synapse_1.1.0_amd64.deb`
 
 ---
 
-## ⌨️ Keyboard Shortcuts
-- `Ctrl+O` or `Ctrl+P`: Quick Switcher / Note Search
-- `Ctrl+G`: Open Synapses Knowledge Graph
-- `Ctrl+B`: Toggle Left File Explorer Sidebar
-- `Ctrl+W`: Close active tab
-- `Ctrl+B` (in editor): Bold text
-- `Ctrl+I` (in editor): Italic text
+## ⌨️ Essential Keyboard Shortcuts
+
+| Shortcut | Action |
+| :--- | :--- |
+| `Ctrl + O` / `Ctrl + P` | Quick Switcher / Fuzzy Document Search |
+| `Ctrl + Shift + P` | Command Palette |
+| `Ctrl + F` | Find & Replace Bar |
+| `Ctrl + S` | Save Active Document (Atomic) |
+| `Ctrl + N` | New Document |
+| `Ctrl + Shift + N` | New Vault Folder |
+| `Ctrl + W` | Close Active Tab |
+| `Ctrl + B` | Toggle File Tree Sidebar |
+| `Ctrl + G` | Open Synapse Knowledge Graph (External) |
+| `Ctrl + /` | Open Slash Commands Menu |
+
+---
+
+## 🔒 Security & Sandboxing
+- Strict **DOMPurify** configuration with MathML and SVG profiles prevents XSS while allowing KaTeX, Mermaid, and task lists.
+- Path traversal protection validates vault boundaries and canonicalizes filesystem references before opening or saving.
+- External links open exclusively in the system default browser via OS launch bridges; dangerous URI schemes (`javascript:`, `file:`) are rejected.
+
+---
+
+## 📄 License
+MIT License.
