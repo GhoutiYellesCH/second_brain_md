@@ -44,6 +44,7 @@ interface LeftSidebarProps {
   starredPaths: string[];
   onToggleStar: (path: string) => void;
   settings: VaultSettings;
+  width?: number;
 }
 
 export const LeftSidebar: React.FC<LeftSidebarProps> = ({
@@ -66,6 +67,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   starredPaths,
   onToggleStar,
   settings,
+  width,
 }) => {
   const [activeTab, setActiveTab] = useState<'files' | 'search' | 'tags' | 'bookmarks'>('files');
   const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({
@@ -250,7 +252,10 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   };
 
   return (
-    <div className="flex flex-col h-full bg-[#121214] border-r border-zinc-800/80 w-64 select-none">
+    <div
+      className="flex flex-col h-full bg-[#121214] border-r border-zinc-800/80 select-none shrink-0"
+      style={{ width: width ? `${width}px` : '16rem' }}
+    >
       {/* Top Sidebar Tab Icons */}
       <div className="flex items-center justify-between px-2 py-1.5 border-b border-zinc-800 bg-[#161619] shrink-0">
         <div className="flex items-center gap-1">

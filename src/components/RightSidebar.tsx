@@ -12,6 +12,7 @@ interface RightSidebarProps {
   onOpenSynapseGraph: () => void;
   onClose?: () => void;
   settings?: VaultSettings;
+  width?: number;
 }
 
 export const RightSidebar: React.FC<RightSidebarProps> = ({
@@ -23,13 +24,17 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   onOpenSynapseGraph,
   onClose,
   settings,
+  width,
 }) => {
   const showLinks = settings?.corePlugins?.wikilinks !== false;
   const showOutline = settings?.corePlugins?.outline !== false;
   const [activeTab, setActiveTab] = useState<'backlinks' | 'outline'>(showLinks ? 'backlinks' : 'outline');
 
   return (
-    <div className="flex flex-col h-full bg-[#121214] border-l border-zinc-800/80 w-72 select-none">
+    <div
+      className="flex flex-col h-full bg-[#121214] border-l border-zinc-800/80 select-none shrink-0"
+      style={{ width: width ? `${width}px` : '18rem' }}
+    >
       {/* Right Sidebar Tab Bar */}
       <div className="flex items-center justify-between px-2 py-1.5 border-b border-zinc-800 bg-[#161619] shrink-0 text-xs">
         <div className="flex items-center gap-1">

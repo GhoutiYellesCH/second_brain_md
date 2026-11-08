@@ -114,6 +114,60 @@ export const App: React.FC = () => {
   const [showSettingsModal, setShowSettingsModal] = useState<boolean>(false);
   const [showQuickSwitcher, setShowQuickSwitcher] = useState<boolean>(false);
 
+  // Sidebar Resize State
+  const [leftSidebarWidth, setLeftSidebarWidth] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem('synapse_left_sidebar_width');
+      return saved ? Math.max(160, Math.min(650, parseInt(saved, 10))) : 260;
+    } catch {
+      return 260;
+    }
+  });
+
+  const [rightSidebarWidth, setRightSidebarWidth] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem('synapse_right_sidebar_width');
+      return saved ? Math.max(180, Math.min(650, parseInt(saved, 10))) : 280;
+    } catch {
+      return 280;
+    }
+  });
+
+  const [isResizingLeft, setIsResizingLeft] = useState<boolean>(false);
+  const [isResizingRight, setIsResizingRight] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (!isResizingLeft && !isResizingRight) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (isResizingLeft) {
+        const newWidth = Math.max(160, Math.min(650, e.clientX));
+        setLeftSidebarWidth(newWidth);
+        try {
+          localStorage.setItem('synapse_left_sidebar_width', newWidth.toString());
+        } catch {}
+      } else if (isResizingRight) {
+        const newWidth = Math.max(180, Math.min(650, window.innerWidth - e.clientX));
+        setRightSidebarWidth(newWidth);
+        try {
+          localStorage.setItem('synapse_right_sidebar_width', newWidth.toString());
+        } catch {}
+      }
+    };
+
+    const handleMouseUp = () => {
+      setIsResizingLeft(false);
+      setIsResizingRight(false);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isResizingLeft, isResizingRight]);
+
   // Search, Outline & Tags
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
@@ -615,12 +669,12 @@ export const App: React.FC = () => {
   return (
     <div className="flex flex-col w-screen h-screen overflow-hidden bg-[#0e0e11] text-zinc-100 select-none">
       {/* Top Application Header / Tab Strip */}
-      <header className="flex items-center justify-between px-3 h-10 bg-[#121215] border-b border-zinc-800 text-xs shrink-0">
-        <div className="flex items-center gap-2">
+      <header className="flex items-center justify-between px-3 h-10 bg-[#121215] border-b border-zinc-800 text-xs shrink-0 w-full overflow-hidden relative">
+        <div className="flex items-center gap-2 min-w-0 overflow-x-auto no-scrollbar py-1">
           {/* Sidebar Toggle Buttons */}
           <button
             onClick={() => setShowLeftSidebar(!showLeftSidebar)}
-            className={`p-1.5 rounded transition-colors ${
+            className={`p-1.5 rounded transition-colors shrink-0 ${
               showLeftSidebar ? 'text-purple-400 bg-purple-950/40' : 'text-zinc-400 hover:bg-zinc-800'
             }`}
             title="Toggle File Explorer (Ctrl+B)"
@@ -628,31 +682,32 @@ export const App: React.FC = () => {
             <PanelLeft className="w-3.5 h-3.5" />
           </button>
 
-          <span className="font-bold tracking-wider text-[#7aa2f7] font-mono text-[11px] uppercase ml-1 flex items-center gap-1.5">
+          <span className="font-bold tracking-wider text-[#7aa2f7] font-mono text-[11px] uppercase ml-1 flex items-center gap-1.5 shrink-0">
             <span className="w-2 h-2 rounded-full bg-[#7aa2f7] animate-pulse" />
             Synapse
           </span>
 
-          <div className="w-[1px] h-4 bg-zinc-800 mx-1" />
+          <div className="w-[1px] h-4 bg-zinc-800 mx-1 shrink-0" />
 
           {/* Open Folder as Vault */}
           <button
             onClick={handlePickVaultFolder}
-            className="flex items-center gap-1.5 px-2.5 py-1 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-md text-zinc-300 font-medium transition-colors"
+            className="flex items-center gap-1.5 px-2.5 py-1 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-md text-zinc-300 font-medium transition-colors shrink-0"
             title="Open Any Folder as Markdown Vault"
           >
             <FolderOpen className="w-3 h-3 text-blue-400" />
-            <span>Open Vault</span>
+            <span className="hidden sm:inline">Open Vault</span>
           </button>
 
           {/* Quick Switcher Trigger */}
           {settings.corePlugins?.quickSwitcher !== false && (
             <button
               onClick={() => setShowQuickSwitcher(true)}
-              className="flex items-center gap-2 px-2.5 py-1 bg-zinc-900/90 hover:bg-zinc-800 border border-zinc-800 rounded-md text-zinc-400 hover:text-zinc-200 transition-colors"
+              className="flex items-center gap-2 px-2.5 py-1 bg-zinc-900/90 hover:bg-zinc-800 border border-zinc-800 rounded-md text-zinc-400 hover:text-zinc-200 transition-colors shrink-0"
+              title="Quick Switcher (Ctrl+O)"
             >
               <Search className="w-3 h-3 text-[#7aa2f7]" />
-              <span className="text-[11px]">Quick Switcher</span>
+              <span className="text-[11px] hidden md:inline">Quick Switcher</span>
               <kbd className="text-[9px] bg-zinc-800 px-1 py-0.2 rounded font-mono text-zinc-500">
                 Ctrl+O
               </kbd>
@@ -663,11 +718,11 @@ export const App: React.FC = () => {
           {settings.corePlugins?.graph !== false && (
             <button
               onClick={handleOpenSynapseGraph}
-              className="flex items-center gap-1.5 px-2.5 py-1 bg-[#7aa2f7]/15 hover:bg-[#7aa2f7]/25 border border-[#7aa2f7]/30 rounded-md text-[#7aa2f7] font-medium transition-colors"
+              className="flex items-center gap-1.5 px-2.5 py-1 bg-[#7aa2f7]/15 hover:bg-[#7aa2f7]/25 border border-[#7aa2f7]/30 rounded-md text-[#7aa2f7] font-medium transition-colors shrink-0"
               title="Launch Synapse Graph Visualizer (Ctrl+G)"
             >
               <Sparkles className="w-3 h-3 text-[#7aa2f7]" />
-              <span>Synapse Graph</span>
+              <span className="hidden lg:inline">Synapse Graph</span>
             </button>
           )}
 
@@ -675,28 +730,29 @@ export const App: React.FC = () => {
           {settings.corePlugins?.browser !== false && (
             <button
               onClick={() => openBrowserTab()}
-              className="flex items-center gap-1.5 px-2.5 py-1 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-md text-zinc-300 font-medium transition-colors"
+              className="flex items-center gap-1.5 px-2.5 py-1 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-md text-zinc-300 font-medium transition-colors shrink-0"
               title="Open Web Browser View"
             >
               <Globe className="w-3 h-3 text-zinc-400" />
-              <span>Browser View</span>
+              <span className="hidden xl:inline">Browser View</span>
             </button>
           )}
         </div>
 
-        <div className="flex items-center gap-1.5">
+        {/* Right Action Buttons: NEVER hidden, permanently pinned on right with shrink-0 */}
+        <div className="flex items-center gap-1.5 shrink-0 ml-auto z-10 pl-2 bg-[#121215]">
           <button
             onClick={() => handleCreateFile(settings.vaultPath)}
-            className="flex items-center gap-1 px-2.5 py-1 bg-purple-600 hover:bg-purple-500 text-white font-medium rounded-md shadow transition-colors"
+            className="flex items-center gap-1 px-2.5 py-1 bg-purple-600 hover:bg-purple-500 text-white font-medium rounded-md shadow transition-colors shrink-0"
             title="Create New Note"
           >
             <Plus className="w-3 h-3" />
-            <span>New Note</span>
+            <span className="hidden sm:inline">New Note</span>
           </button>
 
           <button
             onClick={() => setShowSettingsModal(true)}
-            className="p-1.5 hover:bg-zinc-800 text-zinc-400 hover:text-white rounded-md transition-colors"
+            className="p-1.5 hover:bg-zinc-800 text-zinc-400 hover:text-white rounded-md transition-colors shrink-0"
             title="Vault & Asset Preferences"
           >
             <Settings className="w-3.5 h-3.5" />
@@ -704,7 +760,7 @@ export const App: React.FC = () => {
 
           <button
             onClick={() => setShowRightSidebar(!showRightSidebar)}
-            className={`p-1.5 rounded transition-colors ${
+            className={`p-1.5 rounded transition-colors shrink-0 ${
               showRightSidebar ? 'text-purple-400 bg-purple-950/40' : 'text-zinc-400 hover:bg-zinc-800'
             }`}
             title="Toggle Local Synapses & Outline"
@@ -752,10 +808,11 @@ export const App: React.FC = () => {
       </div>
 
       {/* Main Workspace Body */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className={`flex-1 flex overflow-hidden ${isResizingLeft || isResizingRight ? 'cursor-col-resize select-none' : ''}`}>
         {/* Left Sidebar */}
         {showLeftSidebar && (
           <LeftSidebar
+            width={leftSidebarWidth}
             tree={tree}
             activeFilePath={activeTab?.path}
             onFileSelect={(path, isDir) => {
@@ -792,8 +849,24 @@ export const App: React.FC = () => {
           />
         )}
 
+        {/* Left Sidebar Resize Handle */}
+        {showLeftSidebar && (
+          <div
+            onMouseDown={(e) => {
+              e.preventDefault();
+              setIsResizingLeft(true);
+            }}
+            className={`w-1 cursor-col-resize hover:bg-purple-500 active:bg-purple-500 transition-colors shrink-0 z-20 select-none relative group ${
+              isResizingLeft ? 'bg-purple-500 w-1.5' : 'bg-transparent hover:w-1.5'
+            }`}
+            title="Drag with left-click to resize File Explorer"
+          >
+            <div className="absolute inset-y-0 -left-1.5 -right-1.5 cursor-col-resize" />
+          </div>
+        )}
+
         {/* Center Main Stage */}
-        <main className="flex-1 flex flex-col h-full overflow-hidden bg-[#18181b] relative">
+        <main className="flex-1 flex flex-col h-full overflow-hidden bg-[#18181b] relative min-w-0">
           {activeTab ? (
             <>
               {/* Tab Mode: Browser View */}
@@ -872,9 +945,26 @@ export const App: React.FC = () => {
           )}
         </main>
 
+        {/* Right Sidebar Resize Handle */}
+        {showRightSidebar && (
+          <div
+            onMouseDown={(e) => {
+              e.preventDefault();
+              setIsResizingRight(true);
+            }}
+            className={`w-1 cursor-col-resize hover:bg-purple-500 active:bg-purple-500 transition-colors shrink-0 z-20 select-none relative group ${
+              isResizingRight ? 'bg-purple-500 w-1.5' : 'bg-transparent hover:w-1.5'
+            }`}
+            title="Drag with left-click to resize Right Sidebar"
+          >
+            <div className="absolute inset-y-0 -left-1.5 -right-1.5 cursor-col-resize" />
+          </div>
+        )}
+
         {/* Right Sidebar (Backlinks, Outline, Synapse launcher) */}
         {showRightSidebar && (
           <RightSidebar
+            width={rightSidebarWidth}
             activeNoteTitle={activeTab?.title || ''}
             activeNotePath={activeTab?.path || ''}
             backlinks={activeNoteBacklinks}
