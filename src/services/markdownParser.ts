@@ -1,294 +1,157 @@
 import { marked } from 'marked';
+import DOMPurify from 'dompurify';
 import katex from 'katex';
-import Prism from 'prismjs';
-import 'prismjs/components/prism-javascript';
-import 'prismjs/components/prism-typescript';
-import 'prismjs/components/prism-jsx';
-import 'prismjs/components/prism-tsx';
-import 'prismjs/components/prism-markdown';
-import 'prismjs/components/prism-rust';
-import 'prismjs/components/prism-python';
-import 'prismjs/components/prism-json';
-import 'prismjs/components/prism-bash';
-import 'prismjs/components/prism-css';
-import { HeadingItem, VaultSettings } from '../types';
+import mermaid from 'mermaid';
+import { HeadingItem } from '../types';
 
-export interface ParsedMarkdownResult {
-  html: string;
-  headings: HeadingItem[];
-  outgoingLinks: string[];
-  tags: string[];
-}
+mermaid.initialize({
+  startOnLoad: false,
+  theme: 'dark',
+  themeVariables: {
+    darkMode: true,
+    background: '#1a1b26',
+    primaryColor: '#7aa2f7',
+    primaryBorderColor: '#3d59a1',
+    primaryTextColor: '#c0caf5',
+    lineColor: '#7dcfff',
+    secondaryColor: '#bb9af7',
+    tertiaryColor: '#24283b',
+  },
+  securityLevel: 'loose',
+});
 
-export function isArabicOrRtlText(text: string): boolean {
-  if (!text) return false;
-  // Arabic Unicode ranges
-  const arabicRegex = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/;
-  return arabicRegex.test(text);
-}
+// Configure marked
+marked.setOptions({
+  gfm: true,
+  breaks: true,
+});
 
-export function extractTags(markdown: string): string[] {
-  const tagRegex = /(?:^|\s)#([a-zA-Z0-9_\-\/]+)(?=\s|$|[.,;:!?])/g;
-  const tags = new Set<string>();
+export function extractWikilinks(content: string): string[] {
+  const regex = /\[\[(.*?)\]\]/g;
+  const links: string[] = [];
   let match;
-  while ((match = tagRegex.exec(markdown)) !== null) {
-    // Avoid markdown headers like # Heading
-    const fullMatch = match[0];
-    if (!fullMatch.trim().startsWith('# ') && !fullMatch.trim().startsWith('##')) {
-      tags.add(match[1]);
+  while ((match = regex.exec(content)) !== null) {
+    const raw = match[1].split('|')[0].trim();
+    if (raw && !raw.startsWith('#') && !links.includes(raw)) {
+      links.push(raw);
     }
   }
-  return Array.from(tags);
+  return links;
 }
 
-export function extractWikilinks(markdown: string): string[] {
-  const wikilinkRegex = /\[\[(.*?)\]\]/g;
-  const links = new Set<string>();
+export function extractTags(content: string): string[] {
+  const regex = /(?:^|\s)#([a-zA-Z0-9_\-\/]+)(?=\s|$|[.,;:!?])/g;
+  const tags: string[] = [];
   let match;
-  while ((match = wikilinkRegex.exec(markdown)) !== null) {
-    const raw = match[1];
-    // Ignore asset embeds ![[...]]
-    const index = match.index;
-    if (index > 0 && markdown[index - 1] === '!') {
+  while ((match = regex.exec(content)) !== null) {
+    const tag = match[1].trim();
+    if (tag && !tags.includes(tag) && isNaN(Number(tag))) {
+      tags.push(tag);
+    }
+  }
+  return tags;
+}
+
+export function extractHeadings(content: string): HeadingItem[] {
+  const lines = content.split('\n');
+  const headings: HeadingItem[] = [];
+  let inCode = false;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (line.trim().startsWith('```')) {
+      inCode = !inCode;
       continue;
     }
-    const target = raw.split('|')[0].trim();
-    if (target) {
-      links.add(target);
-    }
-  }
-  return Array.from(links);
-}
+    if (inCode) continue;
 
-export function extractHeadings(markdown: string): HeadingItem[] {
-  const headings: HeadingItem[] = [];
-  const lines = markdown.split('\n');
-  lines.forEach((line, idx) => {
     const match = line.match(/^(#{1,6})\s+(.+)$/);
     if (match) {
-      const level = match[1].length;
-      const text = match[2].trim();
-      const id = text.toLowerCase().replace(/[^\w\s-]/g, '').replace(/\s+/g, '-');
-      headings.push({ level, text, id, line: idx + 1 });
+      headings.push({
+        level: match[1].length,
+        text: match[2].trim(),
+        line: i + 1,
+      });
     }
-  });
+  }
   return headings;
 }
 
-export function resolveAssetPath(
-  assetName: string,
-  currentNotePath: string,
-  settings: VaultSettings
-): string {
-  const vault = settings.vaultPath.replace(/\/+$/, '');
-  const noteDir = currentNotePath.includes('/') ? currentNotePath.substring(0, currentNotePath.lastIndexOf('/')) : vault;
+export function renderMarkdown(content: string, designatedFolder: string = 'Attachments'): string {
+  if (!content) return '';
 
-  switch (settings.assetsMode) {
-    case 'designated': {
-      const folder = settings.designatedFolder.replace(/^\/+|\/+$/g, '');
-      return `${vault}/${folder}/${assetName}`;
-    }
-    case 'root':
-      return `${vault}/${assetName}`;
-    case 'same-folder':
-      return `${noteDir}/${assetName}`;
-    case 'subfolder':
-      return `${noteDir}/assets/${assetName}`;
-    default:
-      return `${vault}/assets/${assetName}`;
-  }
-}
+  let processed = content;
 
-export function parseMarkdown(
-  markdown: string,
-  currentNotePath: string,
-  settings: VaultSettings,
-  assetUrlMap: Record<string, string> = {}
-): ParsedMarkdownResult {
-  const headings = extractHeadings(markdown);
-  const outgoingLinks = extractWikilinks(markdown);
-  const tags = extractTags(markdown);
-
-  // 1. Preprocess Math: block $$...$$ and inline $...$
-  let processed = markdown;
-
-  // Block math
+  // 1. Math formulas: block math $$...$$
+  const mathBlocks: string[] = [];
   processed = processed.replace(/\$\$([\s\S]*?)\$\$/g, (_, math) => {
     try {
-      const rendered = katex.renderToString(math.trim(), { displayMode: true, throwOnError: false });
-      return `<div class="katex-block my-4 overflow-x-auto text-center">${rendered}</div>`;
+      const rendered = katex.renderToString(math.trim(), {
+        displayMode: true,
+        throwOnError: false,
+      });
+      const placeholder = `%%MATH_BLOCK_${mathBlocks.length}%%`;
+      mathBlocks.push(rendered);
+      return placeholder;
     } catch {
-      return `<pre class="katex-error text-red-400">$$\n${math}\n$$</pre>`;
+      return `<code>${math}</code>`;
     }
   });
 
-  // Inline math (avoid matching standalone currency signs like $10 or $20)
-  processed = processed.replace(/(?<!\\)\$([^\$\n]+?)\$/g, (_, math) => {
+  // 2. Math formulas: inline math $...$
+  const mathInlines: string[] = [];
+  processed = processed.replace(/\$([^\$\n]+?)\$/g, (_, math) => {
     try {
-      const rendered = katex.renderToString(math.trim(), { displayMode: false, throwOnError: false });
-      return `<span class="katex-inline">${rendered}</span>`;
+      const rendered = katex.renderToString(math.trim(), {
+        displayMode: false,
+        throwOnError: false,
+      });
+      const placeholder = `%%MATH_INLINE_${mathInlines.length}%%`;
+      mathInlines.push(rendered);
+      return placeholder;
     } catch {
-      return `$${math}$`;
+      return `<code>${math}</code>`;
     }
   });
 
-  // 2. Preprocess Asset Embeds ![[filename|width]]
-  processed = processed.replace(/!\[\[(.*?)\]\]/g, (_, raw) => {
-    const parts = raw.split('|');
-    const assetName = parts[0].trim();
-    const width = parts[1] ? parts[1].trim() : '';
-
-    const ext = assetName.split('.').pop()?.toLowerCase() || '';
-    const resolvedPath = resolveAssetPath(assetName, currentNotePath, settings);
-    const dataSrc = assetUrlMap[resolvedPath] || assetUrlMap[assetName] || '';
-
-    const widthStyle = width ? `style="max-width: ${width}px;"` : '';
-
-    if (['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'bmp'].includes(ext)) {
-      return `<div class="asset-embed-container my-3 rounded-lg overflow-hidden border border-zinc-700/60 bg-zinc-900/60 p-2 inline-block">
-        <img src="${dataSrc || '#'}" alt="${assetName}" data-asset-path="${resolvedPath}" class="vault-asset-img max-h-96 rounded object-contain cursor-pointer hover:opacity-95 transition-opacity" ${widthStyle} />
-        <div class="text-xs text-zinc-400 mt-1 flex items-center justify-between">
-          <span class="truncate font-mono">${assetName}</span>
-          <span class="text-purple-400 text-[10px] uppercase font-semibold">Asset</span>
-        </div>
-      </div>`;
-    } else if (['mp4', 'webm'].includes(ext)) {
-      return `<div class="asset-embed-container my-3">
-        <video controls src="${dataSrc}" class="rounded-lg max-h-80 border border-zinc-700" ${widthStyle}></video>
-        <div class="text-xs text-zinc-400 mt-1">${assetName}</div>
-      </div>`;
-    } else if (['mp3', 'wav', 'ogg'].includes(ext)) {
-      return `<div class="asset-embed-container my-3 p-3 bg-zinc-900 rounded-lg border border-zinc-800">
-        <div class="text-xs text-zinc-300 mb-2 font-mono">🎵 ${assetName}</div>
-        <audio controls src="${dataSrc}" class="w-full"></audio>
-      </div>`;
-    } else if (ext === 'pdf') {
-      return `<div class="asset-embed-container my-3 p-3 bg-zinc-900/80 rounded-lg border border-zinc-700 flex items-center justify-between">
-        <div class="flex items-center gap-2">
-          <span class="text-red-400 font-bold">📄 PDF</span>
-          <span class="text-sm text-zinc-200 font-mono">${assetName}</span>
-        </div>
-        <button class="open-asset-btn px-2.5 py-1 text-xs bg-purple-600 hover:bg-purple-500 text-white rounded font-medium" data-asset-path="${resolvedPath}">Open PDF Reader</button>
-      </div>`;
-    } else {
-      return `<div class="asset-embed-container my-2 p-2.5 bg-zinc-900 rounded border border-zinc-800 flex items-center gap-2 text-sm text-zinc-300">
-        <span>📎</span>
-        <span class="font-mono">${assetName}</span>
-      </div>`;
-    }
-  });
-
-  // 3. Preprocess Wikilinks [[Target|Label]]
-  processed = processed.replace(/\[\[(.*?)\]\]/g, (_, raw) => {
-    const parts = raw.split('|');
+  // 3. Wikilinks: [[Target|Label]] and [[Target]]
+  processed = processed.replace(/\[\[(.*?)\]\]/g, (_, inner) => {
+    const parts = inner.split('|');
     const target = parts[0].trim();
-    const label = parts[1] ? parts[1].trim() : target;
-    return `<a href="#wikilink-${encodeURIComponent(target)}" class="obsidian-wikilink text-purple-400 hover:text-purple-300 hover:underline font-medium cursor-pointer" data-wikilink="${target}">${label}</a>`;
+    const alias = parts[1] ? parts[1].trim() : target;
+    return `<a class="wikilink text-[#7aa2f7] hover:text-[#7dcfff] underline underline-offset-4 decoration-[#7aa2f7]/50 hover:decoration-[#7dcfff] cursor-pointer font-medium" data-target="${target}">${alias}</a>`;
   });
 
-  // 4. Preprocess Callouts: > [!NOTE] Title
-  const calloutRegex = /^>\s*\[!([a-zA-Z]+)\]\s*(.*)$/gm;
-  processed = processed.replace(calloutRegex, (_, type, title) => {
+  // 4. Tags: #tag
+  processed = processed.replace(/(^|\s)#([a-zA-Z0-9_\-\/]+)(?=\s|$|[.,;:!?])/g, '$1<span class="inline-tag bg-[#24283b] text-[#7aa2f7] px-1.5 py-0.5 rounded text-xs font-mono font-medium border border-[#414868]/60 cursor-pointer hover:border-[#7aa2f7]/70" data-tag="$2">#$2</span>');
+
+  // 5. Callouts: > [!NOTE], > [!TIP], > [!WARNING], > [!IMPORTANT], > [!CAUTION]
+  processed = processed.replace(/^>\s*\[!([A-Z]+)\]\s*(.*)$/gim, (_, type, title) => {
     const t = type.toUpperCase();
-    const displayTitle = title.trim() || type.toUpperCase();
-    return `:::callout-${t}:::${displayTitle}:::`;
+    let border = 'border-[#7aa2f7] bg-[#7aa2f7]/10 text-[#7aa2f7]';
+    if (t === 'WARNING' || t === 'CAUTION') border = 'border-[#f7768e] bg-[#f7768e]/10 text-[#f7768e]';
+    if (t === 'TIP' || t === 'SUCCESS') border = 'border-[#73daca] bg-[#73daca]/10 text-[#73daca]';
+    if (t === 'IMPORTANT') border = 'border-[#bb9af7] bg-[#bb9af7]/10 text-[#bb9af7]';
+
+    return `<div class="callout my-3 p-3.5 rounded-lg border-l-4 ${border}"><div class="font-semibold text-sm mb-1 uppercase tracking-wider flex items-center gap-1.5">${t}: ${title || t}</div><div class="callout-content text-sm text-[#c0caf5]">`;
   });
 
-  // 5. Configure marked parser
-  const renderer = new marked.Renderer();
-
-  // Custom code renderer with syntax highlighting and copy button
-  renderer.code = function ({ text, lang }) {
-    if (lang === 'mermaid') {
-      return `<div class="mermaid-diagram my-4 p-4 rounded-lg bg-zinc-900/90 border border-zinc-800 text-center font-mono text-sm overflow-x-auto" data-code="${encodeURIComponent(text)}">
-        <div class="text-xs text-purple-400 font-semibold mb-2 flex items-center justify-between border-b border-zinc-800 pb-1">
-          <span>Mermaid Diagram</span>
-          <span class="text-zinc-500 text-[10px]">Graph Mode</span>
-        </div>
-        <div class="mermaid-content flex justify-center py-2">${text}</div>
-      </div>`;
-    }
-
-    const language = lang && Prism.languages[lang] ? lang : 'markdown';
-    const highlighted = Prism.languages[language]
-      ? Prism.highlight(text, Prism.languages[language], language)
-      : text;
-
-    return `<div class="code-block-container my-3 rounded-lg overflow-hidden border border-zinc-800 bg-[#141416]">
-      <div class="flex items-center justify-between px-3 py-1.5 bg-zinc-900/80 text-xs text-zinc-400 border-b border-zinc-800 font-mono">
-        <span>${lang || 'text'}</span>
-        <button class="copy-code-btn hover:text-white px-2 py-0.5 rounded text-[11px] bg-zinc-800/80 hover:bg-zinc-700 transition-colors" data-code="${encodeURIComponent(text)}">Copy</button>
-      </div>
-      <pre class="p-3 overflow-x-auto text-sm font-mono leading-relaxed text-zinc-200"><code>${highlighted}</code></pre>
-    </div>`;
-  };
-
-  // Custom heading renderer with anchor IDs
-  renderer.heading = function ({ tokens, depth }) {
-    const text = tokens.map((t: any) => t.raw || '').join('');
-    const id = text.toLowerCase().replace(/[^\w\s-]/g, '').replace(/\s+/g, '-');
-    return `<h${depth} id="${id}" class="heading-anchor group relative scroll-mt-6 font-bold tracking-tight text-zinc-100 my-3">
-      <span class="absolute -left-5 opacity-0 group-hover:opacity-60 text-zinc-500 font-mono text-sm select-none">#</span>
-      ${text}
-    </h${depth}>`;
-  };
-
-  // Checkbox task lists
-  renderer.listitem = function (item) {
-    if (item.task) {
-      return `<li class="task-list-item flex items-start gap-2.5 my-1.5 list-none">
-        <input type="checkbox" ${item.checked ? 'checked' : ''} class="mt-1 w-4 h-4 rounded accent-purple-500 bg-zinc-800 border-zinc-700 cursor-pointer" />
-        <span class="${item.checked ? 'line-through text-zinc-500' : 'text-zinc-200'}">${item.text}</span>
-      </li>`;
-    }
-    return `<li class="my-1 text-zinc-200">${item.text}</li>`;
-  };
-
-  // Tag styling (#tag)
-  renderer.text = function ({ text }) {
-    // Replace hashtags with interactive badge
-    return text.replace(/(?:^|\s)#([a-zA-Z0-9_\-\/]+)(?=\s|$|[.,;:!?])/g, (_, tag) => {
-      return ` <span class="obsidian-tag inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-950/60 text-purple-300 border border-purple-800/50 cursor-pointer hover:bg-purple-900/80 transition-colors" data-tag="${tag}">#${tag}</span>`;
-    });
-  };
-
-  marked.setOptions({
-    gfm: true,
-    breaks: true,
-    renderer,
-  });
-
+  // Convert marked HTML
   let rawHtml = marked.parse(processed) as string;
 
-  // Post-process Callout markers
-  rawHtml = rawHtml.replace(/:::callout-([A-Z]+):::(.*?):::\n?([\s\S]*?)(?=(:::callout-|$|<\/blockquote>))/g, (_, type, title, body) => {
-    const colors: Record<string, { border: string; bg: string; text: string; icon: string }> = {
-      NOTE: { border: 'border-blue-500/80', bg: 'bg-blue-950/20', text: 'text-blue-400', icon: 'ℹ️' },
-      TIP: { border: 'border-purple-500/80', bg: 'bg-purple-950/20', text: 'text-purple-400', icon: '💡' },
-      WARNING: { border: 'border-amber-500/80', bg: 'bg-amber-950/20', text: 'text-amber-400', icon: '⚠️' },
-      IMPORTANT: { border: 'border-indigo-500/80', bg: 'bg-indigo-950/20', text: 'text-indigo-400', icon: '📌' },
-      DANGER: { border: 'border-rose-500/80', bg: 'bg-rose-950/20', text: 'text-rose-400', icon: '🔥' },
-      CAUTION: { border: 'border-red-500/80', bg: 'bg-red-950/20', text: 'text-red-400', icon: '🛑' },
-      SUCCESS: { border: 'border-emerald-500/80', bg: 'bg-emerald-950/20', text: 'text-emerald-400', icon: '✅' },
-      QUOTE: { border: 'border-zinc-500/80', bg: 'bg-zinc-900/40', text: 'text-zinc-400', icon: '💬' },
-    };
-    const c = colors[type] || colors.NOTE;
-
-    return `<div class="obsidian-callout my-4 rounded-r-lg border-l-4 ${c.border} ${c.bg} p-3.5 shadow-sm">
-      <div class="flex items-center gap-2 font-semibold text-sm ${c.text} mb-1.5">
-        <span>${c.icon}</span>
-        <span>${title}</span>
-      </div>
-      <div class="text-sm text-zinc-300 leading-relaxed pl-6 space-y-1">
-        ${body}
-      </div>
-    </div>`;
+  // Restore Math Blocks and Inlines
+  mathBlocks.forEach((rendered, idx) => {
+    rawHtml = rawHtml.replace(`%%MATH_BLOCK_${idx}%%`, `<div class="katex-block my-3 overflow-x-auto text-center">${rendered}</div>`);
+  });
+  mathInlines.forEach((rendered, idx) => {
+    rawHtml = rawHtml.replace(`%%MATH_INLINE_${idx}%%`, rendered);
   });
 
-  return {
-    html: rawHtml,
-    headings,
-    outgoingLinks,
-    tags,
-  };
+  // Sanitize with DOMPurify
+  const cleanHtml = DOMPurify.sanitize(rawHtml, {
+    ADD_TAGS: ['math', 'mrow', 'mi', 'mo', 'mn', 'annotation', 'semantics', 'svg', 'g', 'path', 'circle', 'line', 'text', 'rect'],
+    ADD_ATTR: ['target', 'data-target', 'data-tag', 'xmlns', 'viewBox', 'fill', 'stroke', 'stroke-width', 'stroke-linecap', 'stroke-linejoin', 'd', 'cx', 'cy', 'r', 'x', 'y', 'width', 'height', 'checked', 'disabled', 'type', 'class'],
+  });
+
+  return cleanHtml;
 }
